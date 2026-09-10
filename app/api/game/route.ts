@@ -216,17 +216,17 @@ export async function POST(req: NextRequest) {
           {
             id: crypto.randomUUID(),
             name: 'Sentinela de Cinzas',
-            hp: 12,
-            maxHp: 12,
-            ac: 12,
-            attack: 3,
-            damage: '1d6+1',
+            hp: 9,
+            maxHp: 9,
+            ac: 11,
+            attack: 2,
+            damage: '1d4+1',
             initiative: d20().raw + 1,
             x: 7,
             y: 3
           }
         ];
-        for (const p of s.characters) p.initiative = d20().raw + mod(p.stats[1]) - 2 * p.exhaustion;
+        for (const p of s.characters) p.initiative = d20().raw + mod(p.stats[1]) + 3 - 2 * p.exhaustion; // +3 hero preparation bonus
         s.order = [...s.characters.filter((x) => x.hp > 0), ...s.enemies]
           .sort((a, b) => b.initiative - a.initiative || a.id.localeCompare(b.id))
           .map((x) => x.id);
@@ -252,7 +252,7 @@ export async function POST(req: NextRequest) {
         if (!s.combat) {
           s.combat = true;
           s.round = 1;
-          for (const char of s.characters) char.initiative = d20().raw + mod(char.stats[1]) - 2 * char.exhaustion;
+          for (const char of s.characters) char.initiative = d20().raw + mod(char.stats[1]) + 3 - 2 * char.exhaustion; // +3 hero preparation bonus
           for (const enemy of s.enemies) enemy.initiative = d20().raw + 1;
           s.order = [...s.characters.filter((x) => x.hp > 0), ...s.enemies.filter((e) => e.hp > 0)]
             .sort((a, b) => b.initiative - a.initiative || a.id.localeCompare(b.id))
@@ -314,7 +314,7 @@ export async function POST(req: NextRequest) {
         if (!s.combat) {
           s.combat = true;
           s.round = 1;
-          for (const char of s.characters) char.initiative = d20().raw + mod(char.stats[1]) - 2 * char.exhaustion;
+          for (const char of s.characters) char.initiative = d20().raw + mod(char.stats[1]) + 3 - 2 * char.exhaustion; // +3 hero preparation bonus
           for (const enemy of s.enemies) enemy.initiative = d20().raw + 1;
           s.order = [...s.characters.filter((x) => x.hp > 0), ...s.enemies.filter((e) => e.hp > 0)]
             .sort((a, b) => b.initiative - a.initiative || a.id.localeCompare(b.id))
@@ -524,11 +524,11 @@ export async function POST(req: NextRequest) {
             {
               id: crypto.randomUUID(),
               name: 'Sentinela de Cinzas',
-              hp: 12,
-              maxHp: 12,
-              ac: 12,
-              attack: 3,
-              damage: '1d6+1',
+              hp: 9,
+              maxHp: 9,
+              ac: 11,
+              attack: 2,
+              damage: '1d4+1',
               initiative: d20().raw + 1,
               x: 7,
               y: 3
@@ -536,12 +536,12 @@ export async function POST(req: NextRequest) {
             {
               id: crypto.randomUUID(),
               name: 'Cão do Vazio',
-              hp: 9,
-              maxHp: 9,
-              ac: 11,
-              attack: 3,
-              damage: '1d4+2',
-              initiative: d20().raw + 2,
+              hp: 7,
+              maxHp: 7,
+              ac: 10,
+              attack: 2,
+              damage: '1d4',
+              initiative: d20().raw + 1,
               x: 6,
               y: 2
             }
@@ -551,11 +551,11 @@ export async function POST(req: NextRequest) {
             {
               id: crypto.randomUUID(),
               name: 'Guardião Espectral',
-              hp: 22,
-              maxHp: 22,
-              ac: 14,
-              attack: 4,
-              damage: '1d8+2',
+              hp: 18,
+              maxHp: 18,
+              ac: 13,
+              attack: 3,
+              damage: '1d6+2',
               initiative: d20().raw + 2,
               x: 5,
               y: 2
@@ -563,11 +563,11 @@ export async function POST(req: NextRequest) {
             {
               id: crypto.randomUUID(),
               name: 'Escriba Sombrio',
-              hp: 13,
-              maxHp: 13,
-              ac: 12,
-              attack: 3,
-              damage: '1d6+1',
+              hp: 11,
+              maxHp: 11,
+              ac: 11,
+              attack: 2,
+              damage: '1d6',
               initiative: d20().raw + 1,
               x: 6,
               y: 4
@@ -602,11 +602,11 @@ export async function POST(req: NextRequest) {
             {
               id: crypto.randomUUID(),
               name: 'Guardião Espectral',
-              hp: 22,
-              maxHp: 22,
-              ac: 14,
-              attack: 4,
-              damage: '1d8+2',
+              hp: 18,
+              maxHp: 18,
+              ac: 13,
+              attack: 3,
+              damage: '1d6+2',
               initiative: d20().raw + 2,
               x: 5,
               y: 2
@@ -614,11 +614,11 @@ export async function POST(req: NextRequest) {
             {
               id: crypto.randomUUID(),
               name: 'Escriba Sombrio',
-              hp: 13,
-              maxHp: 13,
-              ac: 12,
-              attack: 3,
-              damage: '1d6+1',
+              hp: 11,
+              maxHp: 11,
+              ac: 11,
+              attack: 2,
+              damage: '1d6',
               initiative: d20().raw + 1,
               x: 6,
               y: 4
@@ -630,11 +630,11 @@ export async function POST(req: NextRequest) {
             {
               id: crypto.randomUUID(),
               name: 'Malakor, o Lorde das Cinzas',
-              hp: 38,
-              maxHp: 38,
-              ac: 16,
-              attack: 6,
-              damage: '2d8+3',
+              hp: 30,
+              maxHp: 30,
+              ac: 15,
+              attack: 5,
+              damage: '1d10+3',
               initiative: d20().raw + 3,
               x: 4,
               y: 1
@@ -642,11 +642,11 @@ export async function POST(req: NextRequest) {
             {
               id: crypto.randomUUID(),
               name: 'Sentinela Abissal',
-              hp: 16,
-              maxHp: 16,
-              ac: 13,
-              attack: 4,
-              damage: '1d6+2',
+              hp: 12,
+              maxHp: 12,
+              ac: 12,
+              attack: 3,
+              damage: '1d6+1',
               initiative: d20().raw + 1,
               x: 2,
               y: 3
@@ -657,12 +657,12 @@ export async function POST(req: NextRequest) {
           s.enemies = [
             {
               id: crypto.randomUUID(),
-              name: 'Sentinela de cinzas',
-              hp: 11,
-              maxHp: 11,
-              ac: 12,
-              attack: 3,
-              damage: '1d6+1',
+              name: 'Sentinela de Cinzas',
+              hp: 9,
+              maxHp: 9,
+              ac: 11,
+              attack: 2,
+              damage: '1d4+1',
               initiative: d20().raw + 1,
               x: 5,
               y: 2
@@ -776,6 +776,7 @@ function advance(s: State) {
 
 function executeEnemyAI(s: State) {
   let safety = 0;
+  const attackedTargets = new Set<string>(); // Track who was already attacked this round for target distribution
   while (s.combat && safety < 10) {
     safety++;
     const curId = s.order[s.turn];
@@ -783,11 +784,18 @@ function executeEnemyAI(s: State) {
     if (!enemy) break;
     const activeHeroes = s.characters.filter((c) => c.hp > 0);
     if (activeHeroes.length === 0) break;
-    const target = activeHeroes.sort((a, b) => {
+
+    // Smart target selection: distribute attacks among different heroes
+    // Prefer heroes NOT already attacked this round, unless only 1 hero remains
+    const notYetAttacked = activeHeroes.filter((h) => !attackedTargets.has(h.id));
+    const candidates = notYetAttacked.length > 0 ? notYetAttacked : activeHeroes;
+    const target = candidates.sort((a, b) => {
       const distA = Math.abs(a.x - enemy.x) + Math.abs(a.y - enemy.y);
       const distB = Math.abs(b.x - enemy.x) + Math.abs(b.y - enemy.y);
-      return distA - distB || a.hp - b.hp;
+      return distA - distB;
     })[0];
+    attackedTargets.add(target.id);
+
     const dist = Math.max(Math.abs(target.x - enemy.x), Math.abs(target.y - enemy.y));
     if (dist > 1) {
       const nextX = enemy.x + Math.sign(target.x - enemy.x);

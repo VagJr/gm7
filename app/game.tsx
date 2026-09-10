@@ -207,6 +207,11 @@ export default function Game() {
   const [showGmSidebar, setShowGmSidebar] = useState(false);
   const [showNarrativeBox, setShowNarrativeBox] = useState(true);
   const [activeProjectiles, setActiveProjectiles] = useState<ProjectileVfx[]>([]);
+  const pendingVfxRef = React.useRef<{
+    projectile: ProjectileVfx;
+    floatingText: FloatingNumber;
+    narrateCtx: string;
+  } | null>(null);
   const [isBottomHudMinimized, setIsBottomHudMinimized] = useState(false);
   const [currentAct, setCurrentAct] = useState<1 | 2 | 3>(1);
   const [dungeonSize, setDungeonSize] = useState<8 | 12 | 16>(12);
@@ -398,9 +403,32 @@ export default function Game() {
   const currentEnemy = state?.enemies?.find((e) => e.id === selectedEnemyId) || state?.enemies?.[0] || null;
   const latestGmLog = state?.logs ? [...state.logs].reverse().find((l) => l.kind === 'gm') : null;
 
-  // Memoized 3D dice dismissal to prevent infinite re-roll loops
+  // Memoized 3D dice dismissal — fires pending VFX AFTER dice disappears
   const handleDiceComplete = useCallback(() => {
     setCurrentDiceRoll(null);
+
+    // Fire pending projectile + floating text that were queued during the attack
+    const pending = pendingVfxRef.current;
+    if (pending) {
+      pendingVfxRef.current = null;
+
+      // Launch projectile VFX
+      setActiveProjectiles((prev) => [...prev, pending.projectile]);
+      setTimeout(() => {
+        setActiveProjectiles((prev) => prev.filter((p) => p.id !== pending.projectile.id));
+      }, 550);
+
+      // Show floating combat text after a tiny delay (impact moment)
+      setTimeout(() => {
+        setFloatingTexts((prev) => [...prev, pending.floatingText]);
+        setTimeout(() => {
+          setFloatingTexts((prev) => prev.filter((f) => f.id !== pending.floatingText.id));
+        }, 1600);
+      }, 300);
+
+      // Narrate the cinematic outcome
+      void narrate('', pending.narrateCtx);
+    }
   }, []);
 
   // Complete Cache & Account Wipe Handler
@@ -418,7 +446,8 @@ export default function Game() {
     }
   };
 
-  // EXECUTE COMBAT ATTACK FLOW - SERVER AUTHORITATIVE RESOLUTION (NO CLIENT HP DESYNC)
+  // EXECUTE COMBAT ATTACK FLOW - SERVER AUTHORITATIVE RESOLUTION
+  // Sequence: Action Choice → Server Roll → Dice 3D → (dice dismiss) → Projectile VFX → Floating Text
   const handleExecuteAttack = async (targetId: string) => {
     if (busy || !active || !state) return;
     const target = state.enemies.find((e) => e.id === targetId && e.hp > 0);
@@ -429,7 +458,7 @@ export default function Game() {
     setTargetingAction(null);
     setIsBottomHudMinimized(false);
 
-    // Launch Flying Projectile VFX based on weapon/spell
+    // Determine projectile VFX type based on weapon/spell name
     let pType: ProjectileVfx['type'] = 'arrow';
     const actionName = (curTargeting?.name || active.weapon || '').toLowerCase();
     if (actionName.includes('raio de fogo') || actionName.includes('fogo') || actionName.includes('flame') || actionName.includes('mãos flamejantes')) {
@@ -451,20 +480,7 @@ export default function Game() {
       }
     }
 
-    const newProj: ProjectileVfx = {
-      id: crypto.randomUUID(),
-      startX: active.x,
-      startY: active.y,
-      targetX: target.x,
-      targetY: target.y,
-      type: pType
-    };
-    setActiveProjectiles((prev) => [...prev, newProj]);
-    setTimeout(() => {
-      setActiveProjectiles((prev) => prev.filter((p) => p.id !== newProj.id));
-    }, 550);
-
-    // Call server action (authoritative SRD roll + enemy AI counter-attack)
+    // Call server action FIRST (authoritative SRD roll + enemy AI counter-attack)
     const res = await action({
       action: 'attack',
       character: active.id,
@@ -476,7 +492,34 @@ export default function Game() {
     if (res && res.attackResult) {
       const r = res.attackResult;
 
-      // 1. Trigger Fast Visual 3D Dice Roll matching the EXACT roll from server!
+      // 1. Prepare the projectile + floating text to fire AFTER dice dismiss
+      const newProj: ProjectileVfx = {
+        id: crypto.randomUUID(),
+        startX: active.x,
+        startY: active.y,
+        targetX: target.x,
+        targetY: target.y,
+        type: pType
+      };
+
+      const posX = ((target.x + 0.5) / dungeonSize) * 100;
+      const posY = ((target.y + 0.5) / dungeonSize) * 100;
+      const newFloat: FloatingNumber = {
+        id: crypto.randomUUID(),
+        x: posX,
+        y: posY,
+        text: r.hit ? (r.isCrit ? `CRÍTICO! -${r.damage}` : `-${r.damage}`) : 'ERROU!',
+        type: r.isCrit ? 'crit' : r.hit ? 'damage' : 'miss'
+      };
+
+      // Queue VFX to fire when dice roll dismisses
+      pendingVfxRef.current = {
+        projectile: newProj,
+        floatingText: newFloat,
+        narrateCtx: `Resultado mecânico: ${r.text}`
+      };
+
+      // 2. Show Dice 3D Roll FIRST (fires VFX when it completes via handleDiceComplete)
       setCurrentDiceRoll({
         id: crypto.randomUUID(),
         raw: r.d20Roll,
@@ -486,28 +529,8 @@ export default function Game() {
         hit: r.hit,
         isCrit: r.isCrit,
         isFumble: r.isFumble,
-        label: targetingAction?.name || `Ataque com ${active.weapon}`
+        label: curTargeting?.name || `Ataque com ${active.weapon}`
       });
-
-      // 2. Floating Combat Text at exact target token position
-      const posX = ((target.x + 0.5) / dungeonSize) * 100;
-      const posY = ((target.y + 0.5) / dungeonSize) * 100;
-
-      const newFloat: FloatingNumber = {
-        id: crypto.randomUUID(),
-        x: posX,
-        y: posY,
-        text: r.hit ? (r.isCrit ? `CRÍTICO! -${r.damage}` : `-${r.damage}`) : 'ERROU!',
-        type: r.isCrit ? 'crit' : r.hit ? 'damage' : 'miss'
-      };
-
-      setFloatingTexts((prev) => [...prev, newFloat]);
-      setTimeout(() => {
-        setFloatingTexts((prev) => prev.filter((f) => f.id !== newFloat.id));
-      }, 1600);
-
-      // 3. Groq AI narrates the cinematic story matching the server result!
-      void narrate('', `Resultado mecânico: ${r.text}`);
     }
   };
 
