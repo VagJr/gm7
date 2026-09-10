@@ -246,6 +246,7 @@ export type SpellDefinition = {
   savingThrow?: string;
   description: string;
   icon: string;
+  classes?: string[];
 };
 
 export const SPELLS_CATALOG: SpellDefinition[] = [
@@ -258,7 +259,8 @@ export const SPELLS_CATALOG: SpellDefinition[] = [
     rangeSquares: 12,
     damageFormula: '1d10',
     description: 'Dispara um feixe incandescente. Ataque mágico à distância.',
-    icon: 'Flame'
+    icon: 'Flame',
+    classes: ['Mago', 'Feiticeiro']
   },
   {
     id: 'rajada-mistica',
@@ -269,7 +271,8 @@ export const SPELLS_CATALOG: SpellDefinition[] = [
     rangeSquares: 12,
     damageFormula: '1d10',
     description: 'Um raio de energia crepitante atinge o inimigo.',
-    icon: 'Zap'
+    icon: 'Zap',
+    classes: ['Bruxo']
   },
   {
     id: 'toque-chocante',
@@ -280,7 +283,21 @@ export const SPELLS_CATALOG: SpellDefinition[] = [
     rangeSquares: 1,
     damageFormula: '1d8',
     description: 'Eletricidade estala nas pontas dos seus dedos no combate corpo a corpo.',
-    icon: 'Zap'
+    icon: 'Zap',
+    classes: ['Mago', 'Feiticeiro', 'Bruxo']
+  },
+  {
+    id: 'chama-sagrada',
+    name: 'Chama Sagrada',
+    level: 0,
+    school: 'Evocação',
+    castTime: '1 Ação',
+    rangeSquares: 12,
+    damageFormula: '1d8',
+    savingThrow: 'Destreza',
+    description: 'Chamas radiantes descem sobre o alvo sob comando divino.',
+    icon: 'Sun',
+    classes: ['Clérigo']
   },
   {
     id: 'curar-ferimentos',
@@ -291,7 +308,8 @@ export const SPELLS_CATALOG: SpellDefinition[] = [
     rangeSquares: 1,
     healFormula: '1d8+3',
     description: 'Uma criatura tocada recupera pontos de vida.',
-    icon: 'Heart'
+    icon: 'Heart',
+    classes: ['Clérigo', 'Bardo', 'Druida', 'Paladino']
   },
   {
     id: 'missoes-magicos',
@@ -302,7 +320,8 @@ export const SPELLS_CATALOG: SpellDefinition[] = [
     rangeSquares: 12,
     damageFormula: '3d4+3',
     description: 'Três dardos luminosos acertam infalivelmente seus alvos.',
-    icon: 'Sparkles'
+    icon: 'Sparkles',
+    classes: ['Mago', 'Feiticeiro']
   },
   {
     id: 'maos-flamejantes',
@@ -315,7 +334,22 @@ export const SPELLS_CATALOG: SpellDefinition[] = [
     damageFormula: '3d6',
     savingThrow: 'Destreza',
     description: 'Uma onda cônica de chamas irrompe das suas mãos.',
-    icon: 'Flame'
+    icon: 'Flame',
+    classes: ['Mago', 'Feiticeiro']
+  },
+  {
+    id: 'onda-trovejante',
+    name: 'Onda Trovejante',
+    level: 1,
+    school: 'Evocação',
+    castTime: '1 Ação',
+    rangeSquares: 3,
+    aoeRadiusSquares: 2,
+    damageFormula: '2d8',
+    savingThrow: 'Constituição',
+    description: 'Uma onda estrondosa de trovão sacode e repele os inimigos adjacentes.',
+    icon: 'Wind',
+    classes: ['Bardo', 'Druida', 'Mago', 'Feiticeiro']
   },
   {
     id: 'raio-ardente',
@@ -326,7 +360,8 @@ export const SPELLS_CATALOG: SpellDefinition[] = [
     rangeSquares: 12,
     damageFormula: '4d6',
     description: 'Três raios de fogo atingem alvos com força tremenda.',
-    icon: 'Flame'
+    icon: 'Flame',
+    classes: ['Mago', 'Feiticeiro']
   }
 ];
 
@@ -654,11 +689,21 @@ export function die(sides: number) {
 }
 
 export function roll(expression: string, critical = false) {
-  const m = /^(\d{1,2})d(4|6|8|10|12|20|100)([+-]\d{1,3})?$/.exec(expression.replace(/\s/g, ''));
-  if (!m || +m[1] < 1 || +m[1] > 30) throw Error('Use uma fórmula como 1d20+5 ou 2d6+3 (até 30 dados).');
-  const results = Array.from({ length: +m[1] * (critical ? 2 : 1) }, () => die(+m[2]));
-  const bonus = Number(m[3] || 0);
-  return { results, bonus, total: results.reduce((a, b) => a + b, 0) + bonus };
+  const clean = expression.replace(/\s/g, '');
+  const m = /^(\d{1,2})d(4|6|8|10|12|20|100)([+-]\d{1,3})?$/.exec(clean);
+  if (m && +m[1] >= 1 && +m[1] <= 30) {
+    const results = Array.from({ length: +m[1] * (critical ? 2 : 1) }, () => die(+m[2]));
+    const bonus = Number(m[3] || 0);
+    return { results, bonus, total: Math.max(0, results.reduce((a, b) => a + b, 0) + bonus) };
+  }
+  const flatMatch = /^(\d+)([+-]\d+)?$/.exec(clean);
+  if (flatMatch) {
+    const base = Number(flatMatch[1]);
+    const bonus = flatMatch[2] ? Number(flatMatch[2]) : 0;
+    const total = Math.max(0, base + bonus);
+    return { results: [total], bonus: 0, total };
+  }
+  throw Error('Use uma fórmula como 1d20+5 ou 2d6+3 (até 30 dados).');
 }
 
 export function d20(mode: string = 'normal') {
@@ -729,6 +774,73 @@ export function newCharacter(): Character {
   };
 }
 
+export const DND_5E_XP_TABLE = [
+  0,        // Nível 1
+  300,      // Nível 2
+  900,      // Nível 3
+  2700,     // Nível 4 (ASI)
+  6500,     // Nível 5 (Prof +3)
+  14000,    // Nível 6 (Guerreiro ASI)
+  23000,    // Nível 7
+  34000,    // Nível 8 (ASI)
+  48000,    // Nível 9 (Prof +4)
+  64000,    // Nível 10 (Ladino ASI)
+  85000,    // Nível 11
+  100000,   // Nível 12 (ASI)
+  120000,   // Nível 13 (Prof +5)
+  140000,   // Nível 14 (Guerreiro ASI)
+  165000,   // Nível 15
+  195000,   // Nível 16 (ASI)
+  225000,   // Nível 17 (Prof +6)
+  265000,   // Nível 18
+  305000,   // Nível 19 (ASI)
+  355000    // Nível 20
+];
+
+export function getXpForNextLevel(currentLevel: number): number {
+  if (currentLevel >= 20) return DND_5E_XP_TABLE[19];
+  return DND_5E_XP_TABLE[currentLevel] || 300;
+}
+
+export function canLevelUp(character: Character): boolean {
+  if (!character || character.level >= 20) return false;
+  const req = getXpForNextLevel(character.level);
+  return (character.xp || 0) >= req;
+}
+
+export function isAsiLevel(className: string, level: number): boolean {
+  const standard = [4, 8, 12, 16, 19];
+  if (standard.includes(level)) return true;
+  if (className === 'Guerreiro' && (level === 6 || level === 14)) return true;
+  if (className === 'Ladino' && level === 10) return true;
+  return false;
+}
+
+export function getSpellSlotsForClass(className: string, level: number): number[] {
+  const slots = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+  const fullCasters = ['Mago', 'Clérigo', 'Druida', 'Feiticeiro', 'Bardo'];
+  const halfCasters = ['Paladino', 'Patrulheiro'];
+
+  if (fullCasters.includes(className)) {
+    if (level === 1) slots[0] = 2;
+    else if (level === 2) slots[0] = 3;
+    else if (level === 3) { slots[0] = 4; slots[1] = 2; }
+    else if (level === 4) { slots[0] = 4; slots[1] = 3; }
+    else if (level >= 5) { slots[0] = 4; slots[1] = 3; slots[2] = 2; }
+  } else if (halfCasters.includes(className)) {
+    if (level === 2) slots[0] = 2;
+    else if (level === 3) slots[0] = 3;
+    else if (level === 4) slots[0] = 3;
+    else if (level >= 5) { slots[0] = 4; slots[1] = 2; }
+  } else if (className === 'Bruxo') {
+    if (level === 1) slots[0] = 1;
+    else if (level === 2) slots[0] = 2;
+    else if (level >= 3 && level < 5) slots[1] = 2;
+    else if (level >= 5) slots[2] = 2;
+  }
+  return slots;
+}
+
 /**
  * Recalcula atributos do personagem ao equipar itens no Paper Doll
  */
@@ -748,25 +860,39 @@ export function calculateEquippedStats(c: Character): Character {
     const bonusStr = atkAbilityMod !== 0 ? signed(atkAbilityMod) : '';
     next.damage = `${mainHandItem.damage || '1d4'}${bonusStr}`;
   } else if (!eq.mainHand) {
-    next.weapon = 'Desarmado';
-    next.attack = prof(next.level) + mod(next.stats[0]);
-    next.damage = `1${signed(mod(next.stats[0]))}`;
+    if (!c.weapon || c.weapon === 'Desarmado') {
+      next.weapon = 'Desarmado';
+      next.attack = prof(next.level) + mod(next.stats[0]);
+      next.damage = `1${signed(mod(next.stats[0]))}`;
+    }
   }
 
-  // 2. Armadura e CA
+  // 2. Armadura e CA (incluindo Defesa sem Armadura oficial 5e)
   let calculatedAc = 10 + mod(next.stats[1]); // CA base sem armadura
   const armorItem = eq.armor ? ITEMS_CATALOG[eq.armor] : undefined;
-  if (armorItem && armorItem.type === 'armadura' && armorItem.baseAc) {
+  if (!armorItem || !armorItem.baseAc) {
+    // Unarmored Defense
+    if (next.className === 'Bárbaro') {
+      // Bárbaro 5e: 10 + DES + CON (escudo permitido)
+      calculatedAc = 10 + mod(next.stats[1]) + mod(next.stats[2]);
+    } else if (next.className === 'Monge' && !eq.offHand) {
+      // Monge 5e: 10 + DES + SAB (sem escudo)
+      calculatedAc = 10 + mod(next.stats[1]) + mod(next.stats[4]);
+    }
+  } else if (armorItem && armorItem.type === 'armadura' && armorItem.baseAc) {
     if (armorItem.baseAc >= 16) {
-      // Armadura pesada
+      // Armadura pesada (ex: cota de malha 16, placas 18) - sem bônus de destreza
       calculatedAc = armorItem.baseAc;
-    } else if (armorItem.baseAc >= 12) {
-      // Armadura leve / média
+    } else if (armorItem.baseAc >= 14) {
+      // Armadura média - adiciona Destreza até o limite de +2
+      calculatedAc = armorItem.baseAc + Math.min(2, Math.max(0, mod(next.stats[1])));
+    } else {
+      // Armadura leve - adiciona modificador de Destreza total
       calculatedAc = armorItem.baseAc + mod(next.stats[1]);
     }
   }
 
-  // 3. Escudo na mão secundária
+  // 3. Escudo na mão secundária (+2 CA oficial 5e)
   const offHandItem = eq.offHand ? ITEMS_CATALOG[eq.offHand] : undefined;
   if (offHandItem && offHandItem.acBonus) {
     calculatedAc += offHandItem.acBonus;
@@ -778,6 +904,15 @@ export function calculateEquippedStats(c: Character): Character {
 
   const accItem = eq.accessory ? ITEMS_CATALOG[eq.accessory] : undefined;
   if (accItem && accItem.acBonus) calculatedAc += accItem.acBonus;
+
+  // 5. Botas e Deslocamento
+  const baseSpeed = next.species === 'Anão' || next.species === 'Pequenino' || next.species === 'Halfling' || next.species === 'Gnomo' ? 7.5 : 9;
+  const bootsItem = eq.boots ? ITEMS_CATALOG[eq.boots] : undefined;
+  if (bootsItem && bootsItem.id === 'botas-sombra') {
+    next.speed = baseSpeed + 1.5;
+  } else {
+    next.speed = baseSpeed;
+  }
 
   next.ac = calculatedAc;
   return next;

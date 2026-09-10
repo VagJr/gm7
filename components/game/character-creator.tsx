@@ -63,6 +63,8 @@ const CLASS_CONFIGS: Record<string, {
   availableSkills: string[];
   slots: [number, number, number, number, number, number, number, number, number];
   features: string;
+  spells?: string;
+  spellAbility?: number;
 }> = {
   Guerreiro: {
     hitDie: 10,
@@ -75,7 +77,8 @@ const CLASS_CONFIGS: Record<string, {
     skillsCount: 2,
     availableSkills: ['Atletismo', 'Acrobacia', 'Intimidação', 'Percepção', 'Sobrevivência', 'História'],
     slots: [0, 0, 0, 0, 0, 0, 0, 0, 0],
-    features: 'Estilo de Luta (Defesa), Retomar o Fôlego (1d10+1 PV por descanso curto).'
+    features: 'Estilo de Luta (Defesa), Retomar o Fôlego (1d10+1 PV por descanso curto).',
+    spells: ''
   },
   Mago: {
     hitDie: 6,
@@ -87,7 +90,9 @@ const CLASS_CONFIGS: Record<string, {
     skillsCount: 2,
     availableSkills: ['Arcanismo', 'História', 'Investigação', 'Intuição', 'Religião'],
     slots: [2, 0, 0, 0, 0, 0, 0, 0, 0],
-    features: 'Conjuração Arcana (INT), Recuperação Arcana de espaços de magia durante descanso.'
+    features: 'Conjuração Arcana (INT), Recuperação Arcana de espaços de magia durante descanso.',
+    spells: 'Raio de Fogo\nToque Chocante\nMísseis Mágicos\nMãos Flamejantes',
+    spellAbility: 3
   },
   Clérigo: {
     hitDie: 8,
@@ -100,7 +105,9 @@ const CLASS_CONFIGS: Record<string, {
     skillsCount: 2,
     availableSkills: ['História', 'Intuição', 'Medicina', 'Persuasão', 'Religião'],
     slots: [2, 0, 0, 0, 0, 0, 0, 0, 0],
-    features: 'Domínio Divino (Vida), Canalizar Divindade, Preces Curativas.'
+    features: 'Domínio Divino (Vida), Canalizar Divindade, Preces Curativas.',
+    spells: 'Chama Sagrada\nCurar Ferimentos',
+    spellAbility: 4
   },
   Ladino: {
     hitDie: 8,
@@ -112,7 +119,8 @@ const CLASS_CONFIGS: Record<string, {
     skillsCount: 4,
     availableSkills: ['Acrobacia', 'Atletismo', 'Enganação', 'Furtividade', 'Intimidação', 'Investigação', 'Percepção', 'Prestidigitação'],
     slots: [0, 0, 0, 0, 0, 0, 0, 0, 0],
-    features: 'Ataque Furtivo (+1d6 em vantagem), Especialização em Perícias, Ação Ardilosa.'
+    features: 'Ataque Furtivo (+1d6 em vantagem), Especialização em Perícias, Ação Ardilosa.',
+    spells: ''
   },
   Paladino: {
     hitDie: 10,
@@ -125,7 +133,9 @@ const CLASS_CONFIGS: Record<string, {
     skillsCount: 2,
     availableSkills: ['Atletismo', 'Intuição', 'Intimidação', 'Medicina', 'Persuasão', 'Religião'],
     slots: [0, 0, 0, 0, 0, 0, 0, 0, 0],
-    features: 'Sentido Divino, Cura pelas Mãos (5 PV), Destruição Divina.'
+    features: 'Sentido Divino, Cura pelas Mãos (5 PV), Destruição Divina.',
+    spells: '',
+    spellAbility: 5
   },
   Bárbaro: {
     hitDie: 12,
@@ -137,7 +147,8 @@ const CLASS_CONFIGS: Record<string, {
     skillsCount: 2,
     availableSkills: ['Adestrar Animais', 'Atletismo', 'Intimidação', 'Natureza', 'Percepção', 'Sobrevivência'],
     slots: [0, 0, 0, 0, 0, 0, 0, 0, 0],
-    features: 'Fúria (+2 dano corpo a corpo, resistência a impacto/corte/perfuração), Defesa sem Armadura.'
+    features: 'Fúria (+2 dano corpo a corpo, resistência a impacto/corte/perfuração), Defesa sem Armadura (10+DES+CON).',
+    spells: ''
   },
   Bardo: {
     hitDie: 8,
@@ -149,7 +160,9 @@ const CLASS_CONFIGS: Record<string, {
     skillsCount: 3,
     availableSkills: ['Acrobacia', 'Atuação', 'Enganação', 'História', 'Intuição', 'Investigação', 'Percepção', 'Persuasão'],
     slots: [2, 0, 0, 0, 0, 0, 0, 0, 0],
-    features: 'Inspiração de Bardo (1d6), Conhecimento de Todas as Coisas, Canção de Descanso.'
+    features: 'Inspiração de Bardo (1d6), Conhecimento de Todas as Coisas, Canção de Descanso.',
+    spells: 'Curar Ferimentos\nOnda Trovejante',
+    spellAbility: 5
   },
   Bruxo: {
     hitDie: 8,
@@ -161,7 +174,9 @@ const CLASS_CONFIGS: Record<string, {
     skillsCount: 2,
     availableSkills: ['Arcanismo', 'Enganação', 'História', 'Intimidação', 'Investigação', 'Natureza', 'Religião'],
     slots: [1, 0, 0, 0, 0, 0, 0, 0, 0],
-    features: 'Pacto Sobrenatural, Rajada Mística, Espaços de Magia restaurados em descanso curto.'
+    features: 'Pacto Sobrenatural, Rajada Mística, Espaços de Magia restaurados em descanso curto.',
+    spells: 'Rajada Mística\nToque Chocante',
+    spellAbility: 5
   },
   Druida: {
     hitDie: 8,
@@ -174,7 +189,9 @@ const CLASS_CONFIGS: Record<string, {
     skillsCount: 2,
     availableSkills: ['Adestrar Animais', 'Arcanismo', 'Intuição', 'Medicina', 'Natureza', 'Percepção', 'Religião', 'Sobrevivência'],
     slots: [2, 0, 0, 0, 0, 0, 0, 0, 0],
-    features: 'Druídico, Conjuração Primitiva, Forma Selvagem.'
+    features: 'Druídico, Conjuração Primitiva, Forma Selvagem.',
+    spells: 'Curar Ferimentos\nOnda Trovejante',
+    spellAbility: 4
   },
   Feiticeiro: {
     hitDie: 6,
@@ -186,7 +203,9 @@ const CLASS_CONFIGS: Record<string, {
     skillsCount: 2,
     availableSkills: ['Arcanismo', 'Enganação', 'Intuição', 'Intimidação', 'Persuasão', 'Religião'],
     slots: [2, 0, 0, 0, 0, 0, 0, 0, 0],
-    features: 'Origem de Feitiçaria Inata, Fontes Arcanas de Poder e Metamagia.'
+    features: 'Origem de Feitiçaria Inata, Fontes Arcanas de Poder e Metamagia.',
+    spells: 'Raio de Fogo\nMísseis Mágicos',
+    spellAbility: 5
   },
   Monge: {
     hitDie: 8,
@@ -198,7 +217,8 @@ const CLASS_CONFIGS: Record<string, {
     skillsCount: 2,
     availableSkills: ['Acrobacia', 'Atletismo', 'História', 'Intuição', 'Religião', 'Furtividade'],
     slots: [0, 0, 0, 0, 0, 0, 0, 0, 0],
-    features: 'Artes Marciais (dano desarmado), Defesa sem Armadura (10+DES+SAB), Energia Ki.'
+    features: 'Artes Marciais (dano desarmado), Defesa sem Armadura (10+DES+SAB), Energia Ki.',
+    spells: ''
   },
   Patrulheiro: {
     hitDie: 10,
@@ -210,7 +230,9 @@ const CLASS_CONFIGS: Record<string, {
     skillsCount: 3,
     availableSkills: ['Adestrar Animais', 'Atletismo', 'Furtividade', 'Intuição', 'Investigação', 'Natureza', 'Percepção', 'Sobrevivência'],
     slots: [0, 0, 0, 0, 0, 0, 0, 0, 0],
-    features: 'Inimigo Favorito, Explorador Natural, Precisão com Arco e Rastreamento.'
+    features: 'Inimigo Favorito, Explorador Natural, Precisão com Arco e Rastreamento.',
+    spells: '',
+    spellAbility: 4
   }
 };
 
@@ -277,6 +299,8 @@ export function CharacterCreator({ isOpen, onClose, onSave, busy }: CharacterCre
       speed: speciesInfo.speed,
       slots: classInfo.slots,
       features: `${speciesInfo.desc}\n\n${classInfo.features}`,
+      spells: classInfo.spells || '',
+      spellAbility: classInfo.spellAbility !== undefined ? classInfo.spellAbility : 3,
       notes: backstory,
       equipment: {
         mainHand: classInfo.weapon,

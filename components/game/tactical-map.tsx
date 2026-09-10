@@ -732,6 +732,118 @@ export function TacticalMap({
                       <span className="font-serif font-black text-[11px] sm:text-sm text-red-200 drop-shadow-sm">
                         {enemy.name[0]}
                       </span>
+
+                      {/* FLOATING CONTEXT ACTION MENU ANCHORED BESIDE THE TOKEN */}
+                      {contextEnemy?.id === enemy.id && (
+                        <div
+                          onClick={(e) => e.stopPropagation()}
+                          className={`absolute z-[60] w-64 sm:w-72 bg-zinc-950/98 border-2 border-red-500/90 rounded-2xl p-3 shadow-[0_0_35px_rgba(239,68,68,0.5)] backdrop-blur-2xl pointer-events-auto cursor-default animate-fade-in text-left ${
+                            enemy.x >= 9 ? 'right-full mr-3' : 'left-full ml-3'
+                          } ${
+                            enemy.y >= 10 ? 'bottom-0' : 'top-1/2 -translate-y-1/2'
+                          }`}
+                        >
+                          {/* Header */}
+                          <div className="flex items-center justify-between mb-2.5 pb-2 border-b border-zinc-800/80">
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-8 rounded-xl bg-red-950 border border-red-500/80 flex items-center justify-center font-serif font-black text-red-200 text-sm shadow">
+                                {enemy.name[0]}
+                              </div>
+                              <div className="min-w-0">
+                                <h4 className="font-bold text-red-200 text-xs sm:text-sm leading-tight truncate">
+                                  {enemy.name}
+                                </h4>
+                                <div className="flex items-center gap-2 text-[10px] font-mono mt-0.5">
+                                  <span className="text-red-400 font-bold">{enemy.hp}/{enemy.maxHp} PV</span>
+                                  <span className="text-amber-400">CA {enemy.ac}</span>
+                                </div>
+                              </div>
+                            </div>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setContextEnemy(null);
+                              }}
+                              className="p-1 rounded-lg text-zinc-500 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
+                              title="Fechar"
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+
+                          {/* Action Buttons based on Hero class */}
+                          <div className="flex flex-col gap-1.5">
+                            {/* 1. Main Weapon / Attack */}
+                            <button
+                              disabled={busy}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onTargetEnemy(enemy.id);
+                                setContextEnemy(null);
+                              }}
+                              className="w-full flex items-center gap-2 p-2 bg-gradient-to-r from-red-950/90 to-zinc-900 border border-red-600/60 hover:border-red-400 rounded-xl text-left group transition-all cursor-pointer shadow active:scale-98"
+                            >
+                              <div className="w-7 h-7 rounded-lg bg-red-900/80 border border-red-500/60 flex items-center justify-center text-red-300 shrink-0 group-hover:scale-110 transition-transform">
+                                <Swords size={14} />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="text-[11px] font-bold text-red-200 truncate">
+                                  {activeHero?.weapon || 'Atacar'}
+                                </div>
+                                <div className="text-[9px] font-mono text-red-400/80">
+                                  {activeHero?.damage || '1d8'} dano
+                                </div>
+                              </div>
+                            </button>
+
+                            {/* 2. Spell Attack (ONLY if hero is a spellcaster) */}
+                            {['Mago', 'Clérigo', 'Druida', 'Bruxo', 'Bardo', 'Feiticeiro'].includes(activeHero?.className || '') && (
+                              <button
+                                disabled={busy}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onTargetEnemy(enemy.id);
+                                  setContextEnemy(null);
+                                }}
+                                className="w-full flex items-center gap-2 p-2 bg-gradient-to-r from-purple-950/90 to-zinc-900 border border-purple-600/60 hover:border-purple-400 rounded-xl text-left group transition-all cursor-pointer shadow active:scale-98"
+                              >
+                                <div className="w-7 h-7 rounded-lg bg-purple-900/80 border border-purple-500/60 flex items-center justify-center text-purple-300 shrink-0 group-hover:scale-110 transition-transform">
+                                  <Sparkles size={14} />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-[11px] font-bold text-purple-200 truncate">
+                                    {activeHero?.className === 'Clérigo'
+                                      ? 'Chama Sagrada'
+                                      : activeHero?.className === 'Bruxo'
+                                      ? 'Rajada Mística'
+                                      : 'Raio de Fogo'}
+                                  </div>
+                                  <div className="text-[9px] font-mono text-purple-400/80">
+                                    {activeHero?.className === 'Clérigo' ? '1d8 radiante' : '1d10 mágico'}
+                                  </div>
+                                </div>
+                              </button>
+                            )}
+
+                            {/* 3. Inspect target */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onSelectToken('enemy', enemy.id);
+                                setContextEnemy(null);
+                              }}
+                              className="w-full flex items-center gap-2 p-1.5 bg-zinc-900/80 hover:bg-zinc-800 border border-zinc-700/60 hover:border-amber-500/60 rounded-xl text-left transition-all cursor-pointer"
+                            >
+                              <div className="w-6 h-6 rounded-md bg-zinc-800 flex items-center justify-center text-zinc-300 shrink-0">
+                                <Info size={12} />
+                              </div>
+                              <span className="text-[10px] font-medium text-zinc-300">
+                                Inspecionar / Focar Alvo
+                              </span>
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -878,154 +990,6 @@ export function TacticalMap({
           </div>
         </div>
 
-        {/* FLOATING CONTEXT ACTION MENU ON ENEMY CLICK */}
-        {contextEnemy && (
-          <div className="absolute inset-x-2 bottom-3 sm:bottom-5 z-40 animate-slide-up max-w-md mx-auto">
-            <div className="bg-zinc-950/97 border-2 border-red-500/70 rounded-2xl sm:rounded-3xl p-3 sm:p-4 shadow-[0_0_40px_rgba(239,68,68,0.2)] backdrop-blur-xl">
-              {/* Enemy Info Header */}
-              <div className="flex items-center justify-between mb-3 pb-2 border-b border-zinc-800/80">
-                <div className="flex items-center gap-2.5">
-                  {/* Animated Portrait */}
-                  <div className="relative w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-gradient-to-br from-red-900 to-zinc-950 border-2 border-red-500/80 flex items-center justify-center shadow-lg">
-                    <span className="font-serif font-black text-red-200 text-lg">{contextEnemy.name[0]}</span>
-                    {/* Mini HP ring */}
-                    <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 40 40">
-                      <circle cx="20" cy="20" r="18" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="2" />
-                      <circle
-                        cx="20" cy="20" r="18" fill="none"
-                        stroke={contextEnemy.hp / contextEnemy.maxHp > 0.5 ? '#ef4444' : contextEnemy.hp / contextEnemy.maxHp > 0.2 ? '#f59e0b' : '#dc2626'}
-                        strokeWidth="2.5"
-                        strokeDasharray={`${(contextEnemy.hp / contextEnemy.maxHp) * 113} 113`}
-                        strokeLinecap="round"
-                        className="transition-all duration-500"
-                      />
-                    </svg>
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-red-200 text-sm sm:text-base leading-tight tracking-wide">
-                      {contextEnemy.name}
-                    </h4>
-                    <div className="flex items-center gap-3 text-[11px] font-mono mt-0.5">
-                      <span className="flex items-center gap-1 text-red-400 font-bold">
-                        <Heart size={10} /> {contextEnemy.hp}/{contextEnemy.maxHp}
-                      </span>
-                      <span className="flex items-center gap-1 text-amber-400">
-                        <Shield size={10} /> CA {contextEnemy.ac}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setContextEnemy(null)}
-                  className="p-1.5 rounded-xl text-zinc-500 hover:text-white hover:bg-zinc-800 transition-all"
-                  title="Fechar Menu"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-
-              {/* Tactical Action Grid */}
-              <div className="grid grid-cols-2 gap-2">
-                {/* Melee Attack */}
-                <button
-                  disabled={busy}
-                  onClick={() => {
-                    setActiveVfx((prev) => ({ ...prev, [contextEnemy.id]: getVfxClass(activeHero?.weapon || 'espada') }));
-                    setTimeout(() => {
-                      onTargetEnemy(contextEnemy.id);
-                      setContextEnemy(null);
-                    }, 100);
-                  }}
-                  className="ctx-action-btn flex items-center gap-2.5 p-2.5 bg-gradient-to-r from-red-950/90 to-zinc-900/90 hover:from-red-900 hover:to-zinc-800 border border-red-600/50 hover:border-red-400/80 rounded-xl text-left group shadow-lg"
-                >
-                  <div className="w-8 h-8 rounded-lg bg-red-900/70 border border-red-500/50 flex items-center justify-center text-red-300 shrink-0 group-hover:scale-110 group-hover:bg-red-800 transition-all shadow-inner">
-                    <Swords size={15} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[11px] font-bold text-red-200 truncate">
-                      {activeHero?.weapon || 'Arma'}
-                    </div>
-                    <div className="text-[9px] font-mono text-red-400/80">
-                      {activeHero?.damage || '1d8'} dano
-                    </div>
-                  </div>
-                </button>
-
-                {/* Spell Attack */}
-                <button
-                  disabled={busy}
-                  onClick={() => {
-                    const spellName = activeHero?.className === 'Mago' ? 'Raio de Fogo' : 'Golpe Místico';
-                    setActiveVfx((prev) => ({ ...prev, [contextEnemy.id]: getVfxClass(spellName) }));
-                    setTimeout(() => {
-                      onTargetEnemy(contextEnemy.id);
-                      setContextEnemy(null);
-                    }, 100);
-                  }}
-                  className="ctx-action-btn flex items-center gap-2.5 p-2.5 bg-gradient-to-r from-purple-950/90 to-zinc-900/90 hover:from-purple-900 hover:to-zinc-800 border border-purple-600/50 hover:border-purple-400/80 rounded-xl text-left group shadow-lg"
-                >
-                  <div className="w-8 h-8 rounded-lg bg-purple-900/70 border border-purple-500/50 flex items-center justify-center text-purple-300 shrink-0 group-hover:scale-110 group-hover:bg-purple-800 transition-all shadow-inner">
-                    <Sparkles size={15} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[11px] font-bold text-purple-200 truncate">
-                      {activeHero?.className === 'Mago' ? 'Raio de Fogo' : 'Golpe Místico'}
-                    </div>
-                    <div className="text-[9px] font-mono text-purple-400/80">
-                      {activeHero?.className === 'Mago' ? '1d10 fogo' : 'dano mágico'}
-                    </div>
-                  </div>
-                </button>
-
-                {/* Ranged Attack */}
-                <button
-                  disabled={busy}
-                  onClick={() => {
-                    setActiveVfx((prev) => ({ ...prev, [contextEnemy.id]: 'vfx-arrow' }));
-                    setTimeout(() => {
-                      onTargetEnemy(contextEnemy.id);
-                      setContextEnemy(null);
-                    }, 100);
-                  }}
-                  className="ctx-action-btn flex items-center gap-2.5 p-2.5 bg-gradient-to-r from-amber-950/90 to-zinc-900/90 hover:from-amber-900 hover:to-zinc-800 border border-amber-600/50 hover:border-amber-400/80 rounded-xl text-left group shadow-lg"
-                >
-                  <div className="w-8 h-8 rounded-lg bg-amber-900/70 border border-amber-500/50 flex items-center justify-center text-amber-300 shrink-0 group-hover:scale-110 group-hover:bg-amber-800 transition-all shadow-inner">
-                    <Zap size={15} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[11px] font-bold text-amber-200 truncate">
-                      Ataque à Distância
-                    </div>
-                    <div className="text-[9px] font-mono text-amber-400/80">
-                      projétil
-                    </div>
-                  </div>
-                </button>
-
-                {/* Inspect */}
-                <button
-                  onClick={() => {
-                    onSelectToken('enemy', contextEnemy.id);
-                    setContextEnemy(null);
-                  }}
-                  className="ctx-action-btn flex items-center gap-2.5 p-2.5 bg-gradient-to-r from-[#1c1813]/90 to-zinc-900/90 hover:from-amber-950/60 hover:to-zinc-800 border border-amber-600/40 hover:border-amber-400/80 rounded-xl text-left group shadow-lg"
-                >
-                  <div className="w-8 h-8 rounded-lg bg-amber-950/70 border border-amber-500/50 flex items-center justify-center text-amber-300 shrink-0 group-hover:scale-110 group-hover:bg-amber-900 transition-all shadow-inner">
-                    <Info size={15} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[11px] font-bold text-amber-200 truncate">
-                      Inspecionar
-                    </div>
-                    <div className="text-[9px] font-mono text-amber-400/80">
-                      detalhes do alvo
-                    </div>
-                  </div>
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

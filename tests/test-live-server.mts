@@ -23,7 +23,67 @@ async function run() {
   const getData = await getRes.json() as any;
   assert.ok(getData.signedIn, 'User should be signed in');
   assert.ok(getData.room, 'Room should be present');
-  const room = getData.room;
+  let room = getData.room;
+  if (!room.state.characters || room.state.characters.length === 0) {
+    const createHero = await fetch(base + '/api/game', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        room: room.id,
+        version: room.version,
+        action: 'character',
+        value: {
+          id: 'valerius-live',
+          name: 'Valerius',
+          className: 'Guerreiro',
+          species: 'Humano',
+          background: 'Soldado',
+          level: 1,
+          stats: [16, 14, 14, 10, 12, 8],
+          skills: ['Atletismo'],
+          expertise: [],
+          saves: [0, 2],
+          hp: 12,
+          maxHp: 12,
+          ac: 16,
+          speed: 9,
+          attack: 5,
+          damage: '1d8+3',
+          weapon: 'Espada Longa',
+          spellAbility: 3,
+          slots: [0, 0, 0, 0, 0, 0, 0, 0, 0],
+          usedSlots: [0, 0, 0, 0, 0, 0, 0, 0, 0],
+          features: '',
+          spells: '',
+          inventory: '',
+          notes: '',
+          conditions: [],
+          x: 4,
+          y: 6,
+          xp: 0,
+          initiative: 0,
+          deathSuccess: 0,
+          deathFail: 0,
+          exhaustion: 0
+        }
+      })
+    });
+    const cData = await createHero.json() as any;
+    room = cData.room;
+  }
+  if (!room.state.enemies || room.state.enemies.length === 0) {
+    const encRes = await fetch(base + '/api/game', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        room: room.id,
+        version: room.version,
+        action: 'encounter'
+      })
+    });
+    const encData = await encRes.json() as any;
+    room = encData.room;
+  }
   const initialEnemy = room.state.enemies[0];
   assert.ok(initialEnemy, 'Enemies should exist');
   console.log(`Initial Room loaded: "${room.name}" (version ${room.version}). Enemy: ${initialEnemy.name} (${initialEnemy.hp}/${initialEnemy.maxHp} PV)`);

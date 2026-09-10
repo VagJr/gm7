@@ -29,7 +29,9 @@ import {
   ITEMS_CATALOG,
   mod,
   prof,
-  signed
+  signed,
+  canLevelUp,
+  getXpForNextLevel
 } from '@/lib/game-engine';
 
 export type ActionSelection = {
@@ -73,6 +75,7 @@ interface BottomPlayerHudProps {
   onActionSelect: (action: ActionSelection) => void;
   onOpenInventory: () => void;
   onOpenCharacterSheet: () => void;
+  onOpenLevelUp?: () => void;
   onEndTurn?: () => void;
   onUseItem?: (itemId: string, targetId?: string) => void;
   isCombat: boolean;
@@ -130,11 +133,20 @@ export function BottomPlayerHud({
   const hpPct = Math.min(100, Math.max(0, (currentHp / maxHp) * 100));
   const delayedHpPct = Math.min(100, Math.max(0, (delayedHp / maxHp) * 100));
 
-  // Determine available spells
+  // Determine available spells (strictly adhering to D&D 5e official class spellcasting)
+  const isSpellcaster =
+    ['Mago', 'Clérigo', 'Druida', 'Bruxo', 'Bardo', 'Feiticeiro'].includes(activeHero.className) ||
+    (['Paladino', 'Patrulheiro'].includes(activeHero.className) && activeHero.level >= 2);
+
   const heroSpells = SPELLS_CATALOG.filter((s) => {
+    // Non-casters have no spells unless explicitly known in their sheet
+    if (!isSpellcaster && !activeHero.spells) return false;
+    const isClassSpell = s.classes?.includes(activeHero.className);
+    const isExplicitlyKnown = activeHero.spells && activeHero.spells.toLowerCase().includes(s.name.toLowerCase());
+    if (!isClassSpell && !isExplicitlyKnown) return false;
     if (s.level === 0) return true;
     const slotTotal = activeHero.slots[s.level - 1] || 0;
-    return slotTotal > 0 || activeHero.spells.toLowerCase().includes(s.name.toLowerCase());
+    return slotTotal > 0 || isExplicitlyKnown;
   });
 
   return (
@@ -268,6 +280,32 @@ export function BottomPlayerHud({
                   </div>
                 </div>
               )}
+              {/* XP Progress & Level Up Button */}
+              <div className="hidden lg:flex items-center gap-2 shrink-0 bg-zinc-900/90 border border-zinc-800 px-2.5 py-1 rounded-xl shadow-sm">
+                <div className="flex flex-col gap-0.5 min-w-[80px]" title={`XP: ${activeHero.xp || 0} / ${getXpForNextLevel(activeHero.level)}`}>
+                  <div className="flex items-center justify-between text-[9px] font-mono text-zinc-400">
+                    <span>XP</span>
+                    <span className="text-amber-300 font-bold">{activeHero.xp || 0} / {getXpForNextLevel(activeHero.level)}</span>
+                  </div>
+                  <div className="w-full h-1.5 bg-zinc-950 rounded-full overflow-hidden border border-zinc-800">
+                    <div
+                      style={{ width: `${Math.min(100, ((activeHero.xp || 0) / getXpForNextLevel(activeHero.level)) * 100)}%` }}
+                      className="h-full bg-gradient-to-r from-amber-600 via-yellow-400 to-amber-300 transition-all duration-500"
+                    />
+                  </div>
+                </div>
+
+                {canLevelUp(activeHero) && onOpenLevelUp && (
+                  <button
+                    onClick={onOpenLevelUp}
+                    className="px-2 py-0.5 rounded-lg bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 hover:from-amber-400 hover:to-yellow-300 text-black font-black text-[10px] uppercase tracking-wider shadow-[0_0_15px_rgba(245,158,11,0.8)] border border-yellow-200 animate-bounce cursor-pointer flex items-center gap-1"
+                    title="Subir de Nível (D&D 5e)"
+                  >
+                    <Sparkles size={11} className="text-black fill-black" />
+                    <span>LEVEL UP!</span>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 

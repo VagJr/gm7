@@ -6,6 +6,12 @@ import {
   starterState,
   entry,
   validateCharacter,
+  calculateEquippedStats,
+  canLevelUp,
+  getXpForNextLevel,
+  isAsiLevel,
+  getSpellSlotsForClass,
+  classes,
   attack,
   resolveAttack,
   spendSpellSlot,
@@ -177,9 +183,13 @@ export async function POST(req: NextRequest) {
 
     switch (a.action) {
       case 'character': {
-        if (s.combat) throw Error('Encerre o combate antes de editar fichas.');
-        const next = validateCharacter(a.value as Character);
-        const old = s.characters.find((x) => x.id === next.id);
+        const rawChar = a.value as Character;
+        const old = s.characters.find((x) => x.id === rawChar?.id);
+        const isEquipmentUpdate = Boolean(old && JSON.stringify(old.equipment) !== JSON.stringify(rawChar?.equipment));
+        const isHpOrConditionUpdate = Boolean(old && (old.hp !== rawChar?.hp || JSON.stringify(old.conditions) !== JSON.stringify(rawChar?.conditions)));
+        if (s.combat && !isEquipmentUpdate && !isHpOrConditionUpdate && !owner) throw Error('Encerre o combate antes de editar atributos da ficha.');
+        let next = validateCharacter(rawChar);
+        next = calculateEquippedStats(next);
         if (old && !owner && old.owner !== user.userId) throw Error('Esta ficha pertence a outro jogador.');
         if (old) {
           s.characters = s.characters.map((x) => (x.id === old.id ? { ...next, id: old.id, owner: old.owner } : x));
@@ -187,7 +197,7 @@ export async function POST(req: NextRequest) {
           if (s.characters.length >= 12) throw Error('Limite de 12 personagens por mesa.');
           s.characters.push({ ...next, id: next.id || crypto.randomUUID(), owner: user.userId });
         }
-        log(`${next.name} ${old ? 'atualizou sua ficha' : 'entrou na aventura'}.`);
+        log(`${next.name} ${old ? (isEquipmentUpdate ? 'ajustou seus equipamentos' : 'atualizou sua ficha') : 'entrou na aventura'}.`);
         break;
       }
       case 'roll': {
@@ -277,7 +287,8 @@ export async function POST(req: NextRequest) {
         }
 
         if (p.hp <= 0) throw Error('Este personagem está inconsciente.');
-        const target = s.enemies.find((e) => e.id === a.target && e.hp > 0);
+        const targetId = a.target || a.targetId;
+        const target = s.enemies.find((e) => e.id === targetId && e.hp > 0);
         if (!target) throw Error('Escolha um alvo inimigo ativo.');
 
         // Server authoritative SRD attack resolution
@@ -289,8 +300,18 @@ export async function POST(req: NextRequest) {
           a.mode
         );
         clientAttackResult = res;
+        target.hp = res.hpAfter;
         s.actionUsed = true;
         log(res.text, 'roll');
+
+        if (target.hp <= 0) {
+          log(`💀 ${target.name} foi derrotado!`, 'gm');
+          const xpReward = target.name.includes('Malakor') ? 500 : target.name.includes('Guardião') ? 250 : 150;
+          for (const char of s.characters) {
+            char.xp = (char.xp || 0) + xpReward;
+          }
+          log(`✨ Os heróis receberam +${xpReward} XP pela vitória contra ${target.name}!`, 'gm');
+        }
 
         if (s.enemies.length > 0 && s.enemies.every((e) => e.hp <= 0)) {
           if (!s.questProgress) s.questProgress = {};
@@ -299,6 +320,9 @@ export async function POST(req: NextRequest) {
           } else if (s.biome === 'dungeon' || s.location === 2) {
             s.questProgress.malakor_defeated = true;
           }
+          s.combat = false;
+          s.actionUsed = false;
+          log('⚔️ Todos os inimigos foram vencidos! Vitória do grupo!', 'gm');
         }
 
         // If client specified immediate end of turn, advance
@@ -348,8 +372,9 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        if (a.target) {
-          const target = s.enemies.find((e) => e.id === a.target && e.hp > 0);
+        const targetId = a.target || a.targetId;
+        if (targetId) {
+          const target = s.enemies.find((e) => e.id === targetId && e.hp > 0);
           if (!target) throw Error('Escolha um alvo inimigo ativo.');
           const dmgFormula = String(a.damageFormula || '1d10');
           const spellAtkBonus = prof(p.level) + mod(p.stats[p.spellAbility || 3]) - 2 * p.exhaustion;
@@ -359,8 +384,30 @@ export async function POST(req: NextRequest) {
             a.mode
           );
           clientAttackResult = res;
+          target.hp = res.hpAfter;
           s.actionUsed = true;
           log(`✨ [${spellName}${spellLevel > 0 ? ' • Nível ' + spellLevel : ' • Truque'}] ${res.text}`, 'roll');
+
+          if (target.hp <= 0) {
+            log(`💀 ${target.name} foi derrotado pela magia!`, 'gm');
+            const xpReward = target.name.includes('Malakor') ? 500 : target.name.includes('Guardião') ? 250 : 150;
+            for (const char of s.characters) {
+              char.xp = (char.xp || 0) + xpReward;
+            }
+            log(`✨ Os heróis receberam +${xpReward} XP pela vitória contra ${target.name}!`, 'gm');
+          }
+
+          if (s.enemies.length > 0 && s.enemies.every((e) => e.hp <= 0)) {
+            if (!s.questProgress) s.questProgress = {};
+            if (s.biome === 'forest' || s.location === 1) {
+              s.questProgress.forest_cleared = true;
+            } else if (s.biome === 'dungeon' || s.location === 2) {
+              s.questProgress.malakor_defeated = true;
+            }
+            s.combat = false;
+            s.actionUsed = false;
+            log('⚔️ Todos os inimigos foram vencidos! Vitória do grupo!', 'gm');
+          }
         } else if (a.healFormula) {
           const targetChar = s.characters.find((c) => c.id === (a.targetId || p.id));
           if (!targetChar) throw Error('Alvo inválido para cura.');
@@ -701,6 +748,56 @@ export async function POST(req: NextRequest) {
         }
         break;
       }
+      case 'equip': {
+        const p = own();
+        const nextEquipment = { ...(p.equipment || {}), ...(a.equipment || {}) };
+        p.equipment = nextEquipment;
+        const recalculated = calculateEquippedStats(p);
+        Object.assign(p, recalculated);
+        log(`${p.name} reorganizou seu equipamento de combate.`, 'player');
+        break;
+      }
+      case 'levelup': {
+        const p = own();
+        if (!canLevelUp(p)) {
+          throw Error(`XP insuficiente para subir de nível (${p.xp || 0}/${getXpForNextLevel(p.level)} XP necessários).`);
+        }
+        if (p.level >= 20) throw Error('Este personagem já atingiu o nível máximo (20).');
+
+        const oldLevel = p.level;
+        const newLevel = oldLevel + 1;
+        p.level = newLevel;
+
+        // Dado de vida da classe (D&D 5e oficial)
+        const classTuple = classes.find((cl) => cl[0] === p.className);
+        const hitDieSides = classTuple ? classTuple[1] : 8;
+        const conMod = mod(p.stats[2]);
+        // Incremento de PV pela média ou valor fornecido
+        const hpGain = Math.max(1, Math.floor(hitDieSides / 2) + 1 + conMod);
+        p.maxHp += hpGain;
+        p.hp = Math.min(p.maxHp, p.hp + hpGain);
+
+        // Atualização de espaços de magia para conjuradores
+        p.slots = getSpellSlotsForClass(p.className, newLevel);
+        if (!p.usedSlots) p.usedSlots = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+
+        // ASI: Aumento no Valor de Atributo (distribuição de 2 pontos nos níveis 4, 8, etc.)
+        if (isAsiLevel(p.className, newLevel) && Array.isArray(a.statIncreases)) {
+          for (const statIdx of a.statIncreases) {
+            const idx = Number(statIdx);
+            if (idx >= 0 && idx <= 5 && p.stats[idx] < 20) {
+              p.stats[idx] += 1;
+            }
+          }
+        }
+
+        // Recalcular bônus de proficiência, ataque, CA com os novos atributos e nível
+        const recalculated = calculateEquippedStats(p);
+        Object.assign(p, recalculated);
+
+        log(`🌟 LEVEL UP! ${p.name} alcançou o NÍVEL ${newLevel}! (+${hpGain} PV Máx). Parabéns!`, 'gm');
+        break;
+      }
       case 'respawn': {
         const hero = own();
         hero.hp = hero.maxHp;
@@ -744,6 +841,7 @@ export async function POST(req: NextRequest) {
       healResult: clientHealResult
     });
   } catch (e) {
+    console.error('[API Error]:', e);
     return NextResponse.json(
       { error: e instanceof Error ? e.message : 'Não foi possível salvar. Seu conteúdo foi preservado.' },
       { status: 400 }

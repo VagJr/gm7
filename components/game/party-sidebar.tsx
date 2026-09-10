@@ -18,7 +18,7 @@ import {
   Footprints,
   Eye
 } from 'lucide-react';
-import type { Character } from '@/lib/game-engine';
+import { type Character, canLevelUp } from '@/lib/game-engine';
 
 interface PartySidebarProps {
   party: Character[];
@@ -27,6 +27,7 @@ interface PartySidebarProps {
   onOpenCharacterSheet: (hero: Character) => void;
   onOpenInventory: () => void;
   onOpenCharacterCreator: () => void;
+  onOpenLevelUp?: (hero: Character) => void;
   onShortRest: () => void;
   onWipeData: () => void;
   onSelectView?: (view: string) => void;
@@ -40,6 +41,7 @@ export function PartySidebar({
   onOpenCharacterSheet,
   onOpenInventory,
   onOpenCharacterCreator,
+  onOpenLevelUp,
   onShortRest,
   onWipeData,
   onSelectView,
@@ -224,6 +226,20 @@ export function PartySidebar({
                   <div className="absolute -top-1.5 -left-1.5 w-4 h-4 rounded-full bg-amber-600 border border-amber-300 text-black flex items-center justify-center text-[9px] font-black z-10 shadow">
                     {hero.level}
                   </div>
+
+                  {/* Level Up Indicator Badge */}
+                  {canLevelUp(hero) && (
+                    <div
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onOpenLevelUp?.(hero);
+                      }}
+                      className="absolute -top-2 -right-1.5 w-4 h-4 rounded-full bg-yellow-400 border border-amber-200 text-black flex items-center justify-center text-[10px] font-black z-20 shadow animate-bounce cursor-pointer"
+                      title="Subir de Nível disponível!"
+                    >
+                      🌟
+                    </div>
+                  )}
 
                   {/* Circular Avatar */}
                   <div

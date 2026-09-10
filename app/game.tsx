@@ -85,6 +85,7 @@ import { generateBattlemap, type Battlemap, type BiomeType } from '@/lib/battlem
 import { PartySidebar } from '@/components/game/party-sidebar';
 import { InitiativeRibbon } from '@/components/game/initiative-ribbon';
 import { GamemasterSidebar } from '@/components/game/gamemaster-sidebar';
+import { LevelUpModal } from '@/components/game/level-up-modal';
 
 type ApiData = {
   error: string;
@@ -191,6 +192,8 @@ export default function Game() {
   const [targetingAction, setTargetingAction] = useState<ActionSelection | null>(null);
   const [showInventory, setShowInventory] = useState(false);
   const [showQuests, setShowQuests] = useState(false);
+  const [showLevelUp, setShowLevelUp] = useState(false);
+  const [levelUpHero, setLevelUpHero] = useState<Character | null>(null);
   const [activeNpcDialog, setActiveNpcDialog] = useState<NpcDialogData | null>(null);
   const [aiChoices, setAiChoices] = useState<string[]>([
     'Examinar os degraus e a névoa da abadia',
@@ -1486,6 +1489,10 @@ export default function Game() {
                       onOpenCharacterSheet={(hero) => setCharacter(structuredClone(hero))}
                       onOpenInventory={() => setShowInventory(true)}
                       onOpenCharacterCreator={() => setShowCharacterCreator(true)}
+                      onOpenLevelUp={(hero) => {
+                        setLevelUpHero(hero);
+                        setShowLevelUp(true);
+                      }}
                       onShortRest={() => void action({ action: 'shortRest' })}
                       onWipeData={handleWipeAllData}
                       onSelectView={(v) => setView(v)}
@@ -1587,6 +1594,12 @@ export default function Game() {
                         }
                       }}
                       onOpenInventory={() => setShowInventory(true)}
+                      onOpenLevelUp={() => {
+                        if (active) {
+                          setLevelUpHero(active);
+                          setShowLevelUp(true);
+                        }
+                      }}
                       onOpenCharacterSheet={() => {
                         if (active) setCharacter(structuredClone(active));
                       }}
@@ -1652,6 +1665,26 @@ export default function Game() {
                     onUpdateHero={(updated) => void action({ action: 'character', value: updated })}
                     onClose={() => setShowInventory(false)}
                     onUseItem={(itemId, targetId) => void handleUseItem(itemId, targetId)}
+                  />
+                )}
+
+                {/* D&D 5e Level Up Modal */}
+                {showLevelUp && (levelUpHero || active) && (
+                  <LevelUpModal
+                    hero={levelUpHero || active!}
+                    onClose={() => {
+                      setShowLevelUp(false);
+                      setLevelUpHero(null);
+                    }}
+                    onLevelUp={(targetHero, statIncreases) => {
+                      void action({
+                        action: 'levelup',
+                        character: targetHero.id,
+                        statIncreases
+                      });
+                      setShowLevelUp(false);
+                      setLevelUpHero(null);
+                    }}
                   />
                 )}
               </div>
