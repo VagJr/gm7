@@ -30,7 +30,8 @@ import {
   Trash2,
   Hand,
   Coffee,
-  Clock
+  Clock,
+  Crosshair
 } from 'lucide-react';
 import { SidebarProvider, Sidebar, SidebarContent, SidebarMenu, SidebarMenuItem, SidebarMenuButton } from '@/components/ui/sidebar';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
