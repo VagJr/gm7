@@ -292,6 +292,15 @@ export async function POST(req: NextRequest) {
         s.actionUsed = true;
         log(res.text, 'roll');
 
+        if (s.enemies.length > 0 && s.enemies.every((e) => e.hp <= 0)) {
+          if (!s.questProgress) s.questProgress = {};
+          if (s.biome === 'forest' || s.location === 1) {
+            s.questProgress.forest_cleared = true;
+          } else if (s.biome === 'dungeon' || s.location === 2) {
+            s.questProgress.malakor_defeated = true;
+          }
+        }
+
         // If client specified immediate end of turn, advance
         if (a.endTurn) {
           s.actionUsed = false;
@@ -569,6 +578,11 @@ export async function POST(req: NextRequest) {
           s.enemies = [];
         }
 
+        if (s.biome === 'dungeon' || s.location === 2) {
+          if (!s.questProgress) s.questProgress = {};
+          s.questProgress.dungeon_entered = true;
+        }
+
         log(`O grupo viajou para ${locations[n].name}. ${locations[n].text}`, 'gm');
         break;
       }
@@ -579,6 +593,10 @@ export async function POST(req: NextRequest) {
         s.biome = locations[s.location].biome;
         s.combat = false;
         s.order = [];
+        if (nextAct >= 2) {
+          if (!s.questProgress) s.questProgress = {};
+          s.questProgress.dungeon_entered = true;
+        }
         if (nextAct === 2) {
           s.enemies = [
             {
@@ -670,6 +688,33 @@ export async function POST(req: NextRequest) {
         break;
       case 'message': {
         log(String(a.text).slice(0, 3000), 'player');
+        break;
+      }
+      case 'questStep': {
+        const stepKey = String(a.step || '');
+        if (!s.questProgress) s.questProgress = {};
+        if (stepKey) {
+          s.questProgress[stepKey] = true;
+        }
+        if (a.logText) {
+          log(String(a.logText), 'system');
+        }
+        break;
+      }
+      case 'respawn': {
+        const hero = own();
+        hero.hp = hero.maxHp;
+        hero.conditions = [];
+        hero.deathSaves = { success: 0, fail: 0 };
+        hero.x = 4;
+        hero.y = 6;
+        s.combat = false;
+        s.order = [];
+        s.actionUsed = false;
+        s.location = 0;
+        s.biome = 'village';
+        s.enemies = [];
+        log(`🕊️ ${hero.name} recuperou a consciência no santuário da Vila do Rio Verde, curado pelas águas e orações.`, 'gm');
         break;
       }
       default:

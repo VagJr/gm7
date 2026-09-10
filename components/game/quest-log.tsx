@@ -17,36 +17,40 @@ interface QuestLogProps {
   notes: string;
   onSaveNotes: (notes: string) => void;
   isOwner: boolean;
+  questProgress?: Record<string, boolean>;
 }
 
-const DEFAULT_QUESTS: QuestItem[] = [
-  {
-    id: 'campanha-cinzas',
-    title: 'O Despertar das Cinzas (Missão Principal)',
-    location: 'Vale de Valdoria • Vila do Rio Verde',
-    description: 'Os três selos sagrados que guardam a escuridão foram rompidos. Descubra os invasores, purifique o Menir da floresta e erradique Malakor das catacumbas.',
-    objectives: [
-      { text: 'Falar com o Ancião Doran na praça central da vila', completed: false },
-      { text: 'Equipar Poções de Cura com a Alquimista Elenor', completed: false },
-      { text: 'Obter autorização de marcha com o Capitão Kaelen', completed: false },
-      { text: 'Viajar para a Mata e derrotar as Sentinelas de Cinzas', completed: false },
-      { text: 'Adentrar a Dungeon (Catacumbas dos Três Selos)', completed: false },
-      { text: 'Confrontar e derrotar Malakor, o Conjurador do Vazio', completed: false }
-    ]
-  },
-  {
-    id: 'socorro-elenor',
-    title: 'A Erva dos Menires (Missão Secundária)',
-    location: 'A Floresta dos Sussurros',
-    description: 'A Alquimista Elenor precisa de musgo sagrado que só cresce ao redor dos menires antigos para produzir elixires superiores de revigoração.',
-    objectives: [
-      { text: 'Localizar o círculo de pedras sagradas na floresta', completed: false },
-      { text: 'Coletar 3 ramos de musgo lunar entre as árvores', completed: false }
-    ]
-  }
-];
+export function QuestLog({ onClose, notes, onSaveNotes, isOwner, questProgress }: QuestLogProps) {
+  const qp = questProgress || {};
+  const quests: QuestItem[] = [
+    {
+      id: 'campanha-cinzas',
+      title: 'O Despertar das Cinzas (Missão Principal)',
+      location: 'Vale de Valdoria • Vila do Rio Verde',
+      description: 'Os três selos sagrados que guardam a escuridão foram rompidos. Descubra os invasores, purifique o Menir da floresta e erradique Malakor das catacumbas.',
+      completed: Boolean(qp.malakor_defeated),
+      objectives: [
+        { text: 'Falar com o Ancião Doran na praça central da vila', completed: Boolean(qp.doran_talked) },
+        { text: 'Equipar Poções de Cura com a Alquimista Elenor', completed: Boolean(qp.elenor_talked) },
+        { text: 'Obter autorização de marcha com o Capitão Kaelen', completed: Boolean(qp.kaelen_talked) },
+        { text: 'Viajar para a Mata e derrotar as Sentinelas de Cinzas', completed: Boolean(qp.forest_cleared) },
+        { text: 'Adentrar a Dungeon (Catacumbas dos Três Selos)', completed: Boolean(qp.dungeon_entered) },
+        { text: 'Confrontar e derrotar Malakor, o Conjurador do Vazio', completed: Boolean(qp.malakor_defeated) }
+      ]
+    },
+    {
+      id: 'socorro-elenor',
+      title: 'A Erva dos Menires (Missão Secundária)',
+      location: 'A Floresta dos Sussurros',
+      description: 'A Alquimista Elenor precisa de musgo sagrado que só cresce ao redor dos menires antigos para produzir elixires superiores de revigoração.',
+      completed: Boolean(qp.forest_cleared),
+      objectives: [
+        { text: 'Localizar o círculo de pedras sagradas na floresta', completed: Boolean(qp.forest_cleared) },
+        { text: 'Coletar 3 ramos de musgo lunar entre as árvores', completed: Boolean(qp.forest_cleared) }
+      ]
+    }
+  ];
 
-export function QuestLog({ onClose, notes, onSaveNotes, isOwner }: QuestLogProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md p-3 sm:p-6 animate-fade-in select-none">
       <div className="relative w-full max-w-3xl bg-zinc-950 border-2 border-amber-900/60 rounded-3xl p-4 sm:p-6 shadow-2xl flex flex-col gap-4 max-h-[85vh] overflow-hidden">
@@ -73,7 +77,7 @@ export function QuestLog({ onClose, notes, onSaveNotes, isOwner }: QuestLogProps
               <Award size={14} /> Missões Principais
             </h3>
 
-            {DEFAULT_QUESTS.map((quest) => (
+            {quests.map((quest) => (
               <div
                 key={quest.id}
                 className="bg-zinc-900/70 border border-zinc-800 rounded-2xl p-4 flex flex-col gap-2.5 shadow-md"

@@ -416,7 +416,8 @@ export type State = {
   combat: boolean;
   location: number;
   notes: string;
-  npcs: { id: string; name: string; role: string; description: string; dialogue?: string[] }[];
+  npcs: { id: string; name: string; role: string; description: string; dialogue?: string[]; x?: number; y?: number; icon?: string }[];
+  questProgress?: Record<string, boolean>;
   actionUsed?: boolean;
   bonusActionUsed?: boolean;
   movementUsed?: number;
@@ -459,12 +460,16 @@ export function initialState(): State {
     bonusActionUsed: false,
     movementUsed: 0,
     biome: 'village',
+    questProgress: {},
     npcs: [
       {
         id: 'doran',
         name: 'Ancião Doran',
         role: 'Líder da Vila • Patrono da Missão',
         description: 'Líder sábio de Vila do Rio Verde. Conhece as lendas antigas sobre o selo partido na Floresta dos Sussurros.',
+        x: 6,
+        y: 4,
+        icon: 'Crown',
         dialogue: [
           'Agradeço por terem vindo! Estranhas criaturas de cinzas foram avistadas rondando a ponte leste da nossa vila.',
           'Dizem que os selos da antiga floresta foram rompidos. Se vocês puderem purificar o santuário, a vila recompensará vocês com ouro e honra.',
@@ -476,6 +481,9 @@ export function initialState(): State {
         name: 'Alquimista Elenor',
         role: 'Erborista • Mestre das Poções',
         description: 'Especialista em ervas e poções de cura. Fornece elixires e ensina técnicas de primeiros socorros em combate.',
+        x: 2,
+        y: 3,
+        icon: 'FlaskConical',
         dialogue: [
           'Saudações, aventureiros! A floresta lá fora é implacável com os desatentos.',
           'Guardem estas Poções de Cura na mochila. Quando precisarem, basta beber ou aplicar no aliado tocando na poção: restaura 2d4 + 2 PV instantaneamente!',
@@ -487,6 +495,9 @@ export function initialState(): State {
         name: 'Capitão Kaelen',
         role: 'Guarda da Fronteira • Instrutor Tático',
         description: 'Veterano de guerra condecorado. Instrui os heróis sobre posicionamento tático e regras de combate.',
+        x: 9,
+        y: 6,
+        icon: 'Shield',
         dialogue: [
           'Atenção, combatentes! Em batalha sob as regras táticas 5e, cada um tem direito a 1 Ação e seu deslocamento por turno.',
           'Nunca gastem seu ataque sem verificar a cobertura do terreno. Árvores e muros concedem vantagem tática.',
@@ -576,12 +587,16 @@ export function starterState(ownerId = 'local-hero'): State {
     bonusActionUsed: false,
     movementUsed: 0,
     biome: 'village',
+    questProgress: {},
     npcs: [
       {
         id: 'doran',
         name: 'Ancião Doran',
         role: 'Líder da Vila • Patrono da Missão',
         description: 'Líder sábio de Vila do Rio Verde. Conhece as lendas antigas sobre o selo partido na Floresta dos Sussurros.',
+        x: 6,
+        y: 4,
+        icon: 'Crown',
         dialogue: [
           'Agradeço por terem vindo! Estranhas criaturas de cinzas foram avistadas rondando a ponte leste da nossa vila.',
           'Dizem que os selos da antiga floresta foram rompidos. Se vocês puderem purificar o santuário, a vila recompensará vocês com ouro e honra.',
@@ -593,6 +608,9 @@ export function starterState(ownerId = 'local-hero'): State {
         name: 'Alquimista Elenor',
         role: 'Erborista • Mestre das Poções',
         description: 'Especialista em ervas e poções de cura. Fornece elixires e ensina técnicas de primeiros socorros em combate.',
+        x: 2,
+        y: 3,
+        icon: 'FlaskConical',
         dialogue: [
           'Saudações, aventureiros! A floresta lá fora é implacável com os desatentos.',
           'Guardem estas Poções de Cura na mochila. Quando precisarem, basta beber ou aplicar no aliado tocando na poção: restaura 2d4 + 2 PV instantaneamente!',
@@ -604,6 +622,9 @@ export function starterState(ownerId = 'local-hero'): State {
         name: 'Capitão Kaelen',
         role: 'Guarda da Fronteira • Instrutor Tático',
         description: 'Veterano de guerra condecorado. Instrui os heróis sobre posicionamento tático e regras de combate.',
+        x: 9,
+        y: 6,
+        icon: 'Shield',
         dialogue: [
           'Atenção, combatentes! Em batalha sob as regras táticas 5e, cada um tem direito a 1 Ação e seu deslocamento por turno.',
           'Nunca gastem seu ataque sem verificar a cobertura do terreno. Árvores e muros concedem vantagem tática.',

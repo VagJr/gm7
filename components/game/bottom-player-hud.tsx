@@ -79,6 +79,8 @@ interface BottomPlayerHudProps {
   isHeroTurn: boolean;
   actionUsed?: boolean;
   busy?: boolean;
+  isMinimized?: boolean;
+  onToggleMinimized?: (minimized: boolean) => void;
 }
 
 export function BottomPlayerHud({
@@ -93,10 +95,25 @@ export function BottomPlayerHud({
   isCombat,
   isHeroTurn,
   actionUsed,
-  busy
+  busy,
+  isMinimized: isMinimizedProp,
+  onToggleMinimized
 }: BottomPlayerHudProps) {
   const [activeTab, setActiveTab] = useState<'attacks' | 'spells' | 'skills' | 'items' | 'tactics'>('attacks');
-  const [isMinimized, setIsMinimized] = useState(false);
+  const [internalMinimized, setInternalMinimized] = useState(false);
+  const isMinimized = isMinimizedProp !== undefined ? isMinimizedProp : internalMinimized;
+  const setMinimized = (val: boolean) => {
+    setInternalMinimized(val);
+    onToggleMinimized?.(val);
+  };
+
+  const handleSelectAction = (act: ActionSelection) => {
+    if (act.category === 'attack' || act.category === 'spell') {
+      setMinimized(true);
+    }
+    onActionSelect(act);
+  };
+
   const [tooltip, setTooltip] = useState<ActionSelection | null>(null);
 
   // Dynamic HP bar with deferred damage animation
@@ -292,7 +309,7 @@ export function BottomPlayerHud({
             </button>
 
             <button
-              onClick={() => setIsMinimized(!isMinimized)}
+              onClick={() => setMinimized(!isMinimized)}
               className="p-1.5 px-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-amber-300 border border-zinc-700 rounded-xl flex items-center gap-1 text-xs font-semibold shadow transition-colors"
               title={isMinimized ? 'Expandir console de ações' : 'Minimizar para visão desobstruída do tabuleiro'}
             >
@@ -318,34 +335,33 @@ export function BottomPlayerHud({
                   <button
                     key={id}
                     onClick={() => setActiveTab(id as any)}
-                    className={`flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold transition-all shadow-sm ${
+                    className={`flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold border transition-all ${
                       activeTab === id
-                        ? 'bg-amber-500/25 border-2 border-amber-400 text-amber-200 shadow-[0_0_12px_rgba(251,191,36,0.3)]'
-                        : 'bg-zinc-900/80 border border-zinc-800 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800'
+                        ? 'bg-amber-500/20 border-amber-400 text-amber-200 shadow-sm'
+                        : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
                     }`}
                   >
-                    <Icon size={13} className={activeTab === id ? 'text-amber-400' : 'text-zinc-400'} />
+                    <Icon size={14} className={activeTab === id ? 'text-amber-400' : 'text-zinc-500'} />
                     <span>{label}</span>
-                    <span className="text-[10px] bg-black/50 px-1.5 py-0.2 rounded-full font-mono text-zinc-400">
-                      {count}
-                    </span>
+                    <span className="text-[10px] font-mono opacity-60">({count})</span>
                   </button>
                 ))}
               </div>
 
-              {/* Action Economy Status & Turn Controls */}
+              {/* Action Usage Status Banner */}
               <div className="flex items-center gap-2">
                 {isCombat ? (
                   <>
-                    {actionUsed ? (
-                      <span className="text-xs font-bold text-amber-300/90 bg-amber-950/60 border border-amber-700/60 px-2 py-0.5 rounded-lg flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full bg-amber-400" /> Ação Utilizada
+                    <div className="flex items-center gap-1 text-[11px] font-mono">
+                      <span className="text-zinc-400">Ação:</span>
+                      <span
+                        className={`px-1.5 py-0.2 rounded font-bold ${
+                          actionUsed ? 'bg-red-950 text-red-400 border border-red-800/80' : 'bg-emerald-950 text-emerald-400 border border-emerald-800/80'
+                        }`}
+                      >
+                        {actionUsed ? 'Gasta' : 'Disponível'}
                       </span>
-                    ) : (
-                      <span className="text-xs font-bold text-emerald-300 bg-emerald-950/70 border border-emerald-500/80 px-2 py-0.5 rounded-lg flex items-center gap-1.5 animate-pulse">
-                        <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_5px_rgba(52,211,153,1)]" /> 1 Ação Disponível
-                      </span>
-                    )}
+                    </div>
 
                     {isHeroTurn && onEndTurn && (
                       <button
@@ -375,7 +391,7 @@ export function BottomPlayerHud({
                   {/* Weapon Attack */}
                   <div
                     onClick={() =>
-                      onActionSelect({
+                      handleSelectAction({
                         id: 'attack-weapon',
                         name: `Atacar com ${activeHero.weapon}`,
                         category: 'attack',
@@ -407,7 +423,7 @@ export function BottomPlayerHud({
                   {/* Unarmed Strike */}
                   <div
                     onClick={() =>
-                      onActionSelect({
+                      handleSelectAction({
                         id: 'attack-unarmed',
                         name: 'Golpe Desarmado',
                         category: 'attack',
@@ -439,7 +455,7 @@ export function BottomPlayerHud({
                   {/* Secondary Attack / Dagger */}
                   <div
                     onClick={() =>
-                      onActionSelect({
+                      handleSelectAction({
                         id: 'attack-dagger',
                         name: 'Adaga Ágil',
                         category: 'attack',
@@ -483,7 +499,7 @@ export function BottomPlayerHud({
                         key={s.id}
                         onClick={() => {
                           if (isDepleted) return;
-                          onActionSelect({
+                          handleSelectAction({
                             id: s.id,
                             name: s.name,
                             category: 'spell',

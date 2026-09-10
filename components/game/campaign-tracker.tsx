@@ -114,25 +114,42 @@ export function CampaignTracker({
   // Determine current campaign step dynamically based on game state
   const currentStepIndex = React.useMemo(() => {
     if (!state) return 0;
+    const qp = state.questProgress || {};
     const biome = state.biome || 'village';
     const hasEnemiesAlive = state.enemies && state.enemies.some((e) => e.hp > 0);
-    const logsText = state.logs ? state.logs.map((l) => l.text).join(' ') : '';
 
-    if (biome === 'dungeon' || state.location === 2) {
-      return 4; // Step 5 or 6
+    // 1. Defeated Malakor -> Step 6 (index 5)
+    if (qp.malakor_defeated) return 5;
+
+    // 2. In dungeon or entered dungeon -> Step 6 (index 5: Confrontar Malakor)
+    if (qp.dungeon_entered || biome === 'dungeon' || state.location === 2) {
+      return 5;
     }
+
+    // 3. Defeated forest enemies / cleared forest -> Step 5 (index 4: Descer à Masmorra)
+    if (qp.forest_cleared) {
+      return 4;
+    }
+
+    // 4. In forest: if enemies are alive -> Step 4 (index 3: Neutralizar Patrulha)
     if (biome === 'forest' || state.location === 1) {
-      if (hasEnemiesAlive) return 3; // Step 4
-      return 4; // Ready for dungeon
+      if (hasEnemiesAlive) return 3;
+      return 4;
     }
-    // In Village:
-    if (logsText.includes('Capitão Kaelen') || logsText.includes('portões')) {
-      return 2; // Step 3
+
+    // 5. In Village: check NPC interaction flags
+    if (qp.kaelen_talked) {
+      return 3; // Step 4: Marche para a Floresta
     }
-    if (logsText.includes('Alquimista Elenor') || logsText.includes('Poção de Cura')) {
-      return 1; // Step 2
+    if (qp.elenor_talked) {
+      return 2; // Step 3: Falar com Capitão Kaelen
     }
-    return 0; // Step 1
+    if (qp.doran_talked) {
+      return 1; // Step 2: Provisões da Alquimista Elenor
+    }
+
+    // Default: Step 1 (index 0: O Chamado do Ancião Doran)
+    return 0;
   }, [state]);
 
   const currentStep = CAMPAIGN_STEPS[currentStepIndex] || CAMPAIGN_STEPS[0];

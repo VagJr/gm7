@@ -68,7 +68,7 @@ import { FloatingTextOverlay, type FloatingNumber } from '@/components/game/floa
 import { DiceRoller3D, type DiceRollEvent } from '@/components/game/dice-roller-3d';
 import { TopEnemyHud } from '@/components/game/top-enemy-hud';
 import { BottomPlayerHud, type ActionSelection } from '@/components/game/bottom-player-hud';
-import { TacticalMap } from '@/components/game/tactical-map';
+import { TacticalMap, type ProjectileVfx } from '@/components/game/tactical-map';
 import { InventoryPanel } from '@/components/game/inventory-panel';
 import { NpcDialog, type NpcDialogData } from '@/components/game/npc-dialog';
 import { ExplorationBar } from '@/components/game/exploration-bar';
@@ -205,6 +205,8 @@ export default function Game() {
   const [showPartySidebar, setShowPartySidebar] = useState(true);
   const [showGmSidebar, setShowGmSidebar] = useState(false);
   const [showNarrativeBox, setShowNarrativeBox] = useState(true);
+  const [activeProjectiles, setActiveProjectiles] = useState<ProjectileVfx[]>([]);
+  const [isBottomHudMinimized, setIsBottomHudMinimized] = useState(false);
   const [currentAct, setCurrentAct] = useState<1 | 2 | 3>(1);
   const [dungeonSize, setDungeonSize] = useState<8 | 12 | 16>(12);
   const [dungeonSeed, setDungeonSeed] = useState<number>(() => Date.now());
@@ -230,6 +232,18 @@ export default function Game() {
       setBattlemapBiome(room.state.biome);
     }
   }, [room?.state?.biome, battlemapBiome]);
+
+  // Escape key listener to exit targeting mode
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && targetingAction) {
+        setTargetingAction(null);
+        setIsBottomHudMinimized(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [targetingAction]);
 
   // Reference to prevent stale closures during async operations
   const roomRef = React.useRef(room);
@@ -410,7 +424,44 @@ export default function Game() {
     if (!target) return;
 
     const dmgFormula = targetingAction?.damageFormula || active.damage;
+    const curTargeting = targetingAction;
     setTargetingAction(null);
+    setIsBottomHudMinimized(false);
+
+    // Launch Flying Projectile VFX based on weapon/spell
+    let pType: ProjectileVfx['type'] = 'arrow';
+    const actionName = (curTargeting?.name || active.weapon || '').toLowerCase();
+    if (actionName.includes('raio de fogo') || actionName.includes('fogo') || actionName.includes('flame') || actionName.includes('mãos flamejantes')) {
+      pType = 'fire_bolt';
+    } else if (actionName.includes('mísseis') || actionName.includes('mágico') || actionName.includes('missile')) {
+      pType = 'magic_missile';
+    } else if (actionName.includes('gelo') || actionName.includes('frost')) {
+      pType = 'frost_ray';
+    } else if (actionName.includes('chama sagrada') || actionName.includes('sagrad')) {
+      pType = 'sacred_flame';
+    } else if (actionName.includes('eldritch') || actionName.includes('rajada')) {
+      pType = 'eldritch';
+    } else {
+      const dist = Math.max(Math.abs(active.x - target.x), Math.abs(active.y - target.y));
+      if (dist <= 1 || !actionName.includes('arco')) {
+        pType = 'slash';
+      } else {
+        pType = 'arrow';
+      }
+    }
+
+    const newProj: ProjectileVfx = {
+      id: crypto.randomUUID(),
+      startX: active.x,
+      startY: active.y,
+      targetX: target.x,
+      targetY: target.y,
+      type: pType
+    };
+    setActiveProjectiles((prev) => [...prev, newProj]);
+    setTimeout(() => {
+      setActiveProjectiles((prev) => prev.filter((p) => p.id !== newProj.id));
+    }, 550);
 
     // Call server action (authoritative SRD roll + enemy AI counter-attack)
     const res = await action({
@@ -562,6 +613,22 @@ export default function Game() {
             { label: 'Como posso ajudá-lo?', actionText: `Oferece auxílio a ${chosen.name}.` },
             { label: 'Agradeço, continuarei explorando.', actionText: `Despede-se de ${chosen.name}.` }
           ];
+
+      // Flag quest step progress on server
+      void action({
+        action: 'questStep',
+        step: `${chosen.id}_talked`,
+        logText: `O herói conversou com ${chosen.name}.`
+      });
+
+      // If talking to Elenor, grant 2 healing potions to active hero if not already present
+      if (chosen.id === 'elenor' && active && !active.inventory?.includes('pocao-cura')) {
+        const newInv = active.inventory ? `${active.inventory}, pocao-cura:2` : 'pocao-cura:2';
+        void action({
+          action: 'character',
+          value: { ...active, inventory: newInv }
+        });
+      }
 
       setActiveNpcDialog({
         id: chosen.id,
@@ -1199,7 +1266,10 @@ export default function Game() {
                     selectedHeroId={selected}
                     selectedEnemyId={selectedEnemyId}
                     targetingAction={targetingAction}
-                    onCancelTargeting={() => setTargetingAction(null)}
+                    onCancelTargeting={() => {
+                      setTargetingAction(null);
+                      setIsBottomHudMinimized(false);
+                    }}
                     onSelectToken={(type, id) => {
                       if (type === 'hero') setSelected(id);
                       else setSelectedEnemyId(id);
@@ -1219,8 +1289,67 @@ export default function Game() {
                     onInteractObject={handleInteractObject}
                     busy={busy}
                     activeTurnId={state?.combat ? turnId : undefined}
+                    npcs={state?.npcs || []}
+                    onTalkNpc={handleTalkNpc}
+                    projectiles={activeProjectiles}
                   />
                 </div>
+
+                {/* ═══ TARGETING SELECTION MODE BANNER (CRPG HIGH VISIBILITY) ═══ */}
+                {targetingAction && (
+                  <div className="absolute top-3 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2.5 px-4 py-2 rounded-2xl bg-gradient-to-r from-red-950 via-zinc-950 to-red-950 border-2 border-red-500/90 shadow-[0_0_30px_rgba(239,68,68,0.7)] backdrop-blur-xl animate-fade-in pointer-events-auto">
+                    <Crosshair size={18} className="text-red-400 animate-spin-slow shrink-0" />
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2">
+                      <span className="font-serif font-black text-amber-200 text-xs sm:text-sm tracking-wide">
+                        ALVO: {targetingAction.name}
+                      </span>
+                      <span className="text-[10px] text-zinc-300 font-mono">
+                        ({targetingAction.rangeSquares * 1.5}m) • Selecione um inimigo no tabuleiro
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setTargetingAction(null);
+                        setIsBottomHudMinimized(false);
+                      }}
+                      className="px-2.5 py-1 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-xs font-bold border border-zinc-600 transition-colors flex items-center gap-1 cursor-pointer"
+                    >
+                      <X size={13} />
+                      <span>Cancelar (Esc)</span>
+                    </button>
+                  </div>
+                )}
+
+                {/* ═══ CRPG DEFEAT & RESPAWN MODAL ═══ */}
+                {active && active.hp <= 0 && (
+                  <div className="fixed inset-0 z-55 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-fade-in select-none">
+                    <div className="relative w-full max-w-md bg-gradient-to-b from-[#1c0e0e] via-[#120808] to-[#080404] border-2 border-red-600/90 rounded-3xl p-6 sm:p-8 shadow-[0_0_50px_rgba(239,68,68,0.5)] flex flex-col items-center text-center gap-4">
+                      <div className="w-16 h-16 rounded-full bg-red-950 border-2 border-red-500/80 flex items-center justify-center text-3xl shadow-[0_0_25px_rgba(239,68,68,0.8)] animate-pulse">
+                        💀
+                      </div>
+                      <div>
+                        <h2 className="text-2xl font-serif font-black text-red-200 tracking-wider uppercase">
+                          Herói Derrotado
+                        </h2>
+                        <p className="text-xs sm:text-sm text-zinc-300 mt-2 leading-relaxed">
+                          Seus pontos de vida chegaram a zero. Os guardas e curandeiros de Vila do Rio Verde resgatam você e o acolhem no Santuário Sagrado.
+                        </p>
+                      </div>
+                      <div className="w-full bg-black/60 border border-zinc-800 rounded-2xl p-2.5 text-xs text-amber-300 font-mono">
+                        🕊️ Você renascerá na vila com os Pontos de Vida (PV) totalmente restaurados.
+                      </div>
+                      <button
+                        disabled={busy}
+                        onClick={() => {
+                          void action({ action: 'respawn', character: active.id });
+                        }}
+                        className="w-full py-3 px-6 rounded-2xl bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 hover:from-amber-400 hover:to-yellow-300 text-black font-black text-sm tracking-wider shadow-[0_0_20px_rgba(245,158,11,0.6)] cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-2"
+                      >
+                        <span>🕊️ Renascer no Santuário da Vila</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {/* ═══ FLOATING TACTICAL COMBAT TURN CONTROLS (ALWAYS VISIBLE OUTSIDE BOTTOM CONSOLE) ═══ */}
                 {state?.combat && (
@@ -1404,39 +1533,22 @@ export default function Game() {
                       activeHero={active}
                       party={state?.characters || []}
                       onSelectHero={(id) => setSelected(id)}
+                      isMinimized={isBottomHudMinimized}
+                      onToggleMinimized={(v) => setIsBottomHudMinimized(v)}
                       onActionSelect={(act) => {
-                        if (act.category === 'attack') {
-                          const enemyTarget = currentEnemy || state?.enemies?.find((e) => e.hp > 0);
-                          if (enemyTarget) {
-                            setTargetingAction(act);
-                            void handleExecuteAttack(enemyTarget.id);
-                          } else {
-                            setTargetingAction(act);
-                          }
-                        } else if (act.category === 'spell') {
-                          const enemyTarget = currentEnemy || state?.enemies?.find((e) => e.hp > 0);
-                          if (act.healFormula) {
-                            void action({
-                              action: 'spell',
-                              character: active.id,
-                              spellName: act.name,
-                              spellLevel: act.spellLevel || 0,
-                              healFormula: act.healFormula,
-                              targetId: active.id
-                            });
-                          } else if (enemyTarget) {
-                            setTargetingAction(act);
-                            void action({
-                              action: 'spell',
-                              character: active.id,
-                              spellName: act.name,
-                              spellLevel: act.spellLevel || 0,
-                              damageFormula: act.damageFormula || '1d10',
-                              target: enemyTarget.id
-                            });
-                          } else {
-                            setTargetingAction(act);
-                          }
+                        if (act.category === 'attack' || (act.category === 'spell' && !act.healFormula)) {
+                          // Minimize bottom console and enter explicit Target Selection Mode on the board
+                          setTargetingAction(act);
+                          setIsBottomHudMinimized(true);
+                        } else if (act.category === 'spell' && act.healFormula) {
+                          void action({
+                            action: 'spell',
+                            character: active.id,
+                            spellName: act.name,
+                            spellLevel: act.spellLevel || 0,
+                            healFormula: act.healFormula,
+                            targetId: active.id
+                          });
                         } else if (act.category === 'item') {
                           void handleUseItem(act.id, active.id);
                         } else if (act.category === 'skill') {
@@ -1505,6 +1617,7 @@ export default function Game() {
                     notes={state?.notes || ''}
                     onSaveNotes={(n) => void action({ action: 'notes', notes: n })}
                     isOwner={Boolean(owner)}
+                    questProgress={state?.questProgress}
                   />
                 )}
 

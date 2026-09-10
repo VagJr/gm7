@@ -73,6 +73,26 @@ function getStatusDotColor(condition: string): string {
   return 'bg-zinc-500';
 }
 
+export interface ProjectileVfx {
+  id: string;
+  startX: number;
+  startY: number;
+  targetX: number;
+  targetY: number;
+  type: 'arrow' | 'fire_bolt' | 'magic_missile' | 'sacred_flame' | 'frost_ray' | 'eldritch' | 'slash';
+}
+
+export interface MapNpc {
+  id: string;
+  name: string;
+  role: string;
+  description: string;
+  dialogue?: string[];
+  x?: number;
+  y?: number;
+  icon?: string;
+}
+
 interface TacticalMapProps {
   characters: Character[];
   enemies: Enemy[];
@@ -92,6 +112,9 @@ interface TacticalMapProps {
   onInteractObject?: (type: string, x: number, y: number) => void;
   busy?: boolean;
   activeTurnId?: string;
+  npcs?: MapNpc[];
+  onTalkNpc?: (npcId: string) => void;
+  projectiles?: ProjectileVfx[];
 }
 
 export function TacticalMap({
@@ -112,7 +135,10 @@ export function TacticalMap({
   battlemap,
   onInteractObject,
   busy,
-  activeTurnId
+  activeTurnId,
+  npcs,
+  onTalkNpc,
+  projectiles
 }: TacticalMapProps) {
   const [fogOfWar, setFogOfWar] = useState(true);
   const [zoomScale, setZoomScale] = useState(1);
@@ -359,9 +385,11 @@ export function TacticalMap({
             const inRange = isInRange(x, y);
             const isHovered = hoveredSquare?.x === x && hoveredSquare?.y === y;
 
-            const tileHeroes = characters.filter((c) => c.x === x && c.y === y && c.hp > 0);
+            const isVillage = battlemap?.biome === 'village' || locationName.toLowerCase().includes('vila');
+            const tileNpcs = isVillage ? (npcs || []).filter((n) => n.x === x && n.y === y) : [];
+            const tileHeroes = characters.filter((c) => c.x === x && c.y === y);
             const tileEnemies = enemies.filter((e) => e.x === x && e.y === y && e.hp > 0);
-            const hasEntities = tileHeroes.length > 0 || tileEnemies.length > 0;
+            const hasEntities = tileHeroes.length > 0 || tileEnemies.length > 0 || tileNpcs.length > 0;
 
             const isTileActiveHero = isCombat && tileHeroes.some((h) => h.id === activeTurnId);
             const isTileActiveEnemy = isCombat && tileEnemies.some((e) => e.id === activeTurnId);
@@ -409,6 +437,14 @@ export function TacticalMap({
                     const enemyTarget = tileEnemies[0];
                     if (enemyTarget && inRange) {
                       onTargetEnemy(enemyTarget.id);
+                    }
+                  } else if (tileNpcs.length > 0) {
+                    const npc = tileNpcs[0];
+                    const dist = activeHero ? Math.max(Math.abs(activeHero.x - x), Math.abs(activeHero.y - y)) : 99;
+                    if (dist <= 1) {
+                      onTalkNpc?.(npc.id);
+                    } else if (canMove && activeHero && !tile.blocksMovement) {
+                      onMoveHero(activeHero.id, x, y);
                     }
                   } else if (tileEnemies.length > 0) {
                     setContextEnemy(tileEnemies[0]);
@@ -529,6 +565,26 @@ export function TacticalMap({
                   const conditions = (hero as any).conditions || [];
                   const statusClasses = conditions.map((c: string) => getStatusClass(c)).filter(Boolean).join(' ');
 
+                  // Fallen / Dead Hero Token (Do NOT let token disappear into thin air)
+                  if (hero.hp <= 0) {
+                    return (
+                      <div
+                        key={hero.id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelectToken('hero', hero.id);
+                        }}
+                        className="relative z-10 w-7 h-7 sm:w-9 sm:h-9 rounded-full flex flex-col items-center justify-center cursor-pointer ring-2 ring-red-700 bg-gradient-to-br from-zinc-950 via-red-950 to-black grayscale opacity-80 token-smooth-move shadow-lg"
+                        title={`${hero.name} (INCONSCIENTE / 0 PV)`}
+                      >
+                        <span className="text-sm select-none drop-shadow">💀</span>
+                        <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-red-950 border border-red-700 text-red-300 font-mono text-[7px] px-1 rounded-full uppercase tracking-tight whitespace-nowrap z-20">
+                          0 PV
+                        </div>
+                      </div>
+                    );
+                  }
+
                   return (
                     <div
                       key={hero.id}
@@ -536,7 +592,7 @@ export function TacticalMap({
                         e.stopPropagation();
                         onSelectToken('hero', hero.id);
                       }}
-                      className={`relative z-10 w-7 h-7 sm:w-9 sm:h-9 rounded-full flex flex-col items-center justify-center cursor-pointer token-bob ${
+                      className={`relative z-10 w-7 h-7 sm:w-9 sm:h-9 rounded-full flex flex-col items-center justify-center cursor-pointer token-bob token-smooth-move ${
                         isActiveTurn
                           ? 'ring-4 ring-amber-400 ring-offset-2 ring-offset-black scale-115 shadow-[0_0_25px_rgba(251,191,36,0.9)] token-selected-pulse'
                           : isSelected
@@ -615,7 +671,7 @@ export function TacticalMap({
                           setContextEnemy(enemy);
                         }
                       }}
-                      className={`relative z-10 w-7 h-7 sm:w-9 sm:h-9 rounded-full flex flex-col items-center justify-center cursor-pointer ${
+                      className={`relative z-10 w-7 h-7 sm:w-9 sm:h-9 rounded-full flex flex-col items-center justify-center cursor-pointer token-smooth-move ${
                         isActiveTurn
                           ? 'ring-4 ring-red-500 ring-offset-2 ring-offset-black scale-115 shadow-[0_0_25px_rgba(239,68,68,0.9)] token-target-pulse'
                           : isSelected
@@ -679,7 +735,144 @@ export function TacticalMap({
                     </div>
                   );
                 })}
+
+                {/* 3. Village NPCs */}
+                {tileNpcs.map((npc) => {
+                  const dist = activeHero ? Math.max(Math.abs(activeHero.x - (npc.x ?? -1)), Math.abs(activeHero.y - (npc.y ?? -1))) : 99;
+                  const isNear = dist <= 1;
+
+                  return (
+                    <div
+                      key={npc.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (isNear) {
+                          onTalkNpc?.(npc.id);
+                        }
+                      }}
+                      className={`relative z-15 w-7 h-7 sm:w-9 sm:h-9 rounded-full flex flex-col items-center justify-center cursor-pointer transition-all hover:scale-105 ${
+                        isNear
+                          ? 'ring-2 ring-amber-400 ring-offset-1 ring-offset-black npc-talk-glow shadow-[0_0_18px_rgba(245,158,11,0.7)] scale-105'
+                          : 'ring-[1.5px] ring-emerald-500/70 opacity-90 shadow-md'
+                      } bg-gradient-to-br from-[#1b3320] via-[#102415] to-[#0a140c]`}
+                      title={`${npc.name} • ${npc.role}${isNear ? ' (Perto: clique para conversar)' : ' (Aproxime-se a 1,5m para conversar)'}`}
+                    >
+                      {/* Speech bubble button when player is in close proximity */}
+                      {isNear && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onTalkNpc?.(npc.id);
+                          }}
+                          className="absolute -top-7 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1 px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-400 to-yellow-300 hover:from-amber-300 hover:to-yellow-200 text-black font-black text-[8px] sm:text-[9px] shadow-[0_0_12px_rgba(245,158,11,0.9)] cursor-pointer active:scale-95 transition-all whitespace-nowrap"
+                        >
+                          <span>💬 Falar</span>
+                        </button>
+                      )}
+
+                      {/* NPC Token Icon */}
+                      <span className="text-xs sm:text-sm drop-shadow-md select-none">
+                        {npc.id === 'doran' ? '🧙' : npc.id === 'elenor' ? '🧪' : npc.id === 'kaelen' ? '🛡️' : '👤'}
+                      </span>
+
+                      {/* Mini Name Pill beneath token */}
+                      <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-zinc-950/95 border border-emerald-500/60 text-emerald-300 font-serif font-bold text-[7px] sm:text-[8px] px-1 py-0 rounded-full tracking-tight whitespace-nowrap z-20 pointer-events-none shadow">
+                        {npc.name.split(' ')[0]}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
+            );
+          })}
+
+          {/* FLYING COMBAT PROJECTILES OVERLAY */}
+          {projectiles && projectiles.map((p) => {
+            const startLeft = ((p.startX + 0.5) / gridSize) * 100 + '%';
+            const startTop = ((p.startY + 0.5) / gridSize) * 100 + '%';
+            const targetLeft = ((p.targetX + 0.5) / gridSize) * 100 + '%';
+            const targetTop = ((p.targetY + 0.5) / gridSize) * 100 + '%';
+            const dx = p.targetX - p.startX;
+            const dy = p.targetY - p.startY;
+            const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+
+            if (p.type === 'slash') {
+              return (
+                <div
+                  key={p.id}
+                  className="slash-arc-anim"
+                  style={{ left: targetLeft, top: targetTop }}
+                >
+                  <div className="w-12 h-12 border-r-4 border-t-4 border-red-500 rounded-full shadow-[0_0_20px_#ef4444]" />
+                </div>
+              );
+            }
+
+            if (p.type === 'sacred_flame') {
+              return (
+                <div
+                  key={p.id}
+                  className="sacred-flame-anim"
+                  style={{ left: targetLeft, top: targetTop }}
+                >
+                  <div className="w-6 h-24 bg-gradient-to-b from-yellow-200 via-amber-400 to-amber-500 rounded-full shadow-[0_0_30px_#fef08a]" />
+                </div>
+              );
+            }
+
+            return (
+              <React.Fragment key={p.id}>
+                <div
+                  className="projectile-fly-anim"
+                  style={{
+                    '--proj-start-x': startLeft,
+                    '--proj-start-y': startTop,
+                    '--proj-target-x': targetLeft,
+                    '--proj-target-y': targetTop,
+                    '--proj-angle': `${angle}deg`
+                  } as React.CSSProperties}
+                >
+                  {p.type === 'fire_bolt' ? (
+                    <div className="relative flex items-center justify-center">
+                      <div className="w-5 h-5 rounded-full bg-gradient-to-r from-yellow-300 via-orange-500 to-red-600 shadow-[0_0_18px_#f97316] animate-spin" />
+                      <div className="absolute right-3 w-10 h-2 bg-gradient-to-l from-orange-500/90 to-transparent blur-[1px] rounded-full" />
+                    </div>
+                  ) : p.type === 'magic_missile' ? (
+                    <div className="relative flex items-center justify-center">
+                      <div className="w-5 h-5 rounded-full bg-gradient-to-r from-violet-400 via-purple-500 to-fuchsia-400 shadow-[0_0_18px_#a855f7] animate-pulse" />
+                      <div className="absolute right-3 w-12 h-2 bg-gradient-to-l from-fuchsia-500/80 to-transparent blur-[1px] rounded-full" />
+                    </div>
+                  ) : p.type === 'frost_ray' ? (
+                    <div className="relative flex items-center justify-center">
+                      <div className="w-7 h-2 rounded-full bg-gradient-to-r from-cyan-300 to-white shadow-[0_0_16px_#38bdf8]" />
+                      <div className="absolute right-2 w-9 h-2 bg-gradient-to-l from-sky-400/80 to-transparent blur-[1px]" />
+                    </div>
+                  ) : p.type === 'eldritch' ? (
+                    <div className="relative flex items-center justify-center">
+                      <div className="w-5 h-5 rounded-full bg-gradient-to-r from-emerald-400 to-green-500 shadow-[0_0_18px_#10b981] animate-spin-slow" />
+                      <div className="absolute right-3 w-10 h-2 bg-gradient-to-l from-emerald-500/80 to-transparent blur-[1px]" />
+                    </div>
+                  ) : (
+                    /* Default Arrow */
+                    <div className="relative flex items-center">
+                      <div className="w-7 h-1 bg-gradient-to-r from-transparent via-amber-200 to-white shadow-[0_0_10px_#eab308]" />
+                      <div className="w-2.5 h-2.5 -ml-1.5 rotate-45 bg-amber-300 shadow" />
+                    </div>
+                  )}
+                </div>
+
+                {/* Impact Ring at target */}
+                <div
+                  className="impact-ring-anim border-2 border-amber-400"
+                  style={{
+                    left: targetLeft,
+                    top: targetTop,
+                    width: '36px',
+                    height: '36px'
+                  }}
+                />
+              </React.Fragment>
             );
           })}
           </div>
