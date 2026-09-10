@@ -98,6 +98,25 @@
 .scrollbar-none::-webkit-scrollbar {
   display: none;
 }
+
+@keyframes routeDash {
+  to {
+    stroke-dashoffset: -12;
+  }
+}
+.route-dash-anim {
+  animation: routeDash 1s linear infinite;
+}
+
+@keyframes combatPulseVignette {
+  0% { opacity: 0; transform: scale(0.96); }
+  30% { opacity: 1; transform: scale(1); }
+  85% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.02); }
+}
+.combat-intro-anim {
+  animation: combatPulseVignette 2.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
 .scrollbar-none {
   -ms-overflow-style: none;
   scrollbar-width: none;

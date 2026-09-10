@@ -192,7 +192,8 @@ async function runTests() {
       version: roomVersion,
       action: 'attack',
       character: hero.id,
-      target: enemy.id
+      target: enemy.id,
+      damageFormula: '1'
     })
   });
 
@@ -213,7 +214,8 @@ async function runTests() {
         version: roomVersion,
         action: 'attack',
         character: hero.id,
-        target: enemy.id
+        target: enemy.id,
+        damageFormula: '1'
       })
     });
 

@@ -802,7 +802,8 @@ export async function POST(req: NextRequest) {
         const hero = own();
         hero.hp = hero.maxHp;
         hero.conditions = [];
-        hero.deathSaves = { success: 0, fail: 0 };
+        hero.deathSuccess = 0;
+        hero.deathFail = 0;
         hero.x = 4;
         hero.y = 6;
         s.combat = false;

@@ -20,7 +20,11 @@ import {
   Award,
   CheckCircle2,
   Dices,
-  Coffee
+  RotateCcw,
+  ShieldAlert,
+  EyeOff,
+  Activity,
+  Target
 } from 'lucide-react';
 import {
   Character,
@@ -44,6 +48,7 @@ export type ActionSelection = {
   aoeRadius?: number;
   spellLevel?: number;
   description: string;
+  economyType?: 'action' | 'bonus' | 'movement' | 'reaction';
 };
 
 // All 18 official D&D 5e skills with their key attribute index (0:FOR, 1:DES, 2:CON, 3:INT, 4:SAB, 5:CAR)
@@ -93,6 +98,7 @@ export function BottomPlayerHud({
   onActionSelect,
   onOpenInventory,
   onOpenCharacterSheet,
+  onOpenLevelUp = () => {},
   onEndTurn,
   onUseItem,
   isCombat,
@@ -102,7 +108,7 @@ export function BottomPlayerHud({
   isMinimized: isMinimizedProp,
   onToggleMinimized
 }: BottomPlayerHudProps) {
-  const [activeTab, setActiveTab] = useState<'attacks' | 'spells' | 'skills' | 'items' | 'tactics'>('attacks');
+  const [activeTab, setActiveTab] = useState<'action' | 'bonus' | 'movement' | 'reaction' | 'skills'>('action');
   const [internalMinimized, setInternalMinimized] = useState(false);
   const isMinimized = isMinimizedProp !== undefined ? isMinimizedProp : internalMinimized;
   const setMinimized = (val: boolean) => {
@@ -295,9 +301,9 @@ export function BottomPlayerHud({
                   </div>
                 </div>
 
-                {canLevelUp(activeHero) && onOpenLevelUp && (
+                {canLevelUp(activeHero) && (
                   <button
-                    onClick={onOpenLevelUp}
+                    onClick={() => onOpenLevelUp?.()}
                     className="px-2 py-0.5 rounded-lg bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 hover:from-amber-400 hover:to-yellow-300 text-black font-black text-[10px] uppercase tracking-wider shadow-[0_0_15px_rgba(245,158,11,0.8)] border border-yellow-200 animate-bounce cursor-pointer flex items-center gap-1"
                     title="Subir de Nível (D&D 5e)"
                   >
@@ -357,47 +363,68 @@ export function BottomPlayerHud({
           </div>
         </div>
 
-        {/* ═══ TIER 2: EXPANDED ACTION CONSOLE (GRID DE OPÇÕES COMPLETAS) ═══ */}
+        {/* ═══ TIER 2: COMPACT 5E ACTION BAR (AÇÃO, BÔNUS, MOVIMENTO, REAÇÃO & PERÍCIAS) ═══ */}
         {!isMinimized && (
-          <div className="flex flex-col p-2.5 gap-2 bg-[#0d120d]">
-            {/* Action Category Navigation Ribbon */}
-            <div className="flex items-center justify-between border-b border-zinc-800/80 pb-1.5 gap-2 flex-wrap">
-              <div className="flex items-center gap-1.5 flex-wrap">
+          <div className="flex flex-col p-2 gap-1.5 bg-[#0b0f0c] border-t border-[#1e271c]">
+            {/* Action Category Navigation Ribbon with 5E Economy Tabs */}
+            <div className="flex items-center justify-between border-b border-stone-800/80 pb-1 gap-2 flex-wrap">
+              <div className="flex items-center gap-1 flex-wrap">
                 {[
-                  { id: 'attacks', label: 'Ataques & Armas', icon: Swords, count: 3 },
-                  { id: 'spells', label: 'Magias & Truques', icon: Sparkles, count: heroSpells.length },
-                  { id: 'skills', label: 'Perícias D&D 5e', icon: Compass, count: ALL_5E_SKILLS.length },
-                  { id: 'items', label: 'Poções & Consumíveis', icon: Package, count: 3 },
-                  { id: 'tactics', label: 'Ações Táticas 5e', icon: Wind, count: TACTICAL_ACTIONS.length }
-                ].map(({ id, label, icon: Icon, count }) => (
+                  { id: 'action', label: 'Ação (Padrão)', icon: Swords, badge: '1/turno' },
+                  { id: 'bonus', label: 'Ação Bônus', icon: Zap, badge: '1/turno' },
+                  { id: 'movement', label: 'Movimento', icon: Footprints, badge: `${activeHero.speed}m` },
+                  { id: 'reaction', label: 'Reação', icon: Shield, badge: 'Reativo' },
+                  { id: 'skills', label: 'Perícias 5e', icon: Compass, badge: '18' }
+                ].map(({ id, label, icon: Icon, badge }) => (
                   <button
                     key={id}
                     onClick={() => setActiveTab(id as any)}
-                    className={`flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold border transition-all ${
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
                       activeTab === id
-                        ? 'bg-amber-500/20 border-amber-400 text-amber-200 shadow-sm'
-                        : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
+                        ? 'bg-amber-950/40 border-amber-500/70 text-amber-200 shadow-sm'
+                        : 'bg-stone-900/60 border-stone-800 text-stone-400 hover:text-stone-200 hover:border-stone-700'
                     }`}
                   >
-                    <Icon size={14} className={activeTab === id ? 'text-amber-400' : 'text-zinc-500'} />
+                    <Icon size={13} className={activeTab === id ? 'text-amber-400' : 'text-stone-500'} />
                     <span>{label}</span>
-                    <span className="text-[10px] font-mono opacity-60">({count})</span>
+                    <span className="text-[10px] font-mono opacity-60">[{badge}]</span>
                   </button>
                 ))}
               </div>
 
-              {/* Action Usage Status Banner */}
-              <div className="flex items-center gap-2">
+              {/* 5E Action Economy Status Indicators */}
+              <div className="flex items-center gap-2 flex-wrap">
                 {isCombat ? (
                   <>
-                    <div className="flex items-center gap-1 text-[11px] font-mono">
-                      <span className="text-zinc-400">Ação:</span>
+                    <div className="flex items-center gap-1.5 text-[11px] font-mono">
+                      <span className="text-stone-400 hidden sm:inline">Economia 5e:</span>
                       <span
-                        className={`px-1.5 py-0.2 rounded font-bold ${
-                          actionUsed ? 'bg-red-950 text-red-400 border border-red-800/80' : 'bg-emerald-950 text-emerald-400 border border-emerald-800/80'
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                          actionUsed
+                            ? 'bg-red-950/80 text-red-400 border border-red-900/80'
+                            : 'bg-emerald-950/80 text-emerald-300 border border-emerald-800/80'
                         }`}
+                        title="Ação padrão no turno"
                       >
-                        {actionUsed ? 'Gasta' : 'Disponível'}
+                        Ação: {actionUsed ? 'Gasta' : 'Pronta'}
+                      </span>
+                      <span
+                        className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-950/60 text-amber-300 border border-amber-800/60"
+                        title="Ação bônus no turno"
+                      >
+                        Bônus: Livre
+                      </span>
+                      <span
+                        className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-cyan-950/60 text-cyan-300 border border-cyan-800/60"
+                        title="Deslocamento total do personagem"
+                      >
+                        Mov: {activeHero.speed}m
+                      </span>
+                      <span
+                        className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-950/60 text-purple-300 border border-purple-800/60 hidden md:inline"
+                        title="Reação disponível para ataques de oportunidade e magias reativas"
+                      >
+                        Reação: Pronta
                       </span>
                     </div>
 
@@ -405,7 +432,7 @@ export function BottomPlayerHud({
                       <button
                         disabled={busy}
                         onClick={onEndTurn}
-                        className="bg-gradient-to-r from-amber-600 via-amber-500 to-yellow-500 hover:from-amber-500 hover:to-yellow-400 text-black font-black px-3.5 py-1 rounded-xl text-xs flex items-center gap-1.5 shadow-[0_0_15px_rgba(245,158,11,0.5)] active:scale-95 transition-all animate-pulse shrink-0"
+                        className="bg-gradient-to-r from-amber-600 via-amber-500 to-yellow-500 hover:from-amber-500 hover:to-yellow-400 text-stone-950 font-black px-3 py-1 rounded-lg text-xs flex items-center gap-1.5 shadow-[0_0_12px_rgba(245,158,11,0.4)] active:scale-95 transition-all shrink-0 cursor-pointer"
                         title="Encerrar seu turno e passar a vez ao próximo combatente"
                       >
                         <Swords size={13} />
@@ -414,19 +441,19 @@ export function BottomPlayerHud({
                     )}
                   </>
                 ) : (
-                  <span className="text-xs text-zinc-400 font-mono hidden sm:inline">
-                    🌿 Modo de Exploração Livre
+                  <span className="text-xs text-stone-400 font-mono hidden sm:inline">
+                    Exploração Livre • Clique no mapa para mover
                   </span>
                 )}
               </div>
             </div>
 
-            {/* Action Cards Grid Area — Modular Fixed Height for Games (No Layout Shifts) */}
-            <div className="w-full h-52 sm:h-48 overflow-y-auto pr-1.5 scrollbar-thin scrollbar-thumb-zinc-700">
-              {/* ═══ TAB 1: ATAQUES & ARMAS ═══ */}
-              {activeTab === 'attacks' && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5">
-                  {/* Weapon Attack */}
+            {/* Action Cards Area — Compact Height (~130px) so the Map Commands the Screen */}
+            <div className="w-full h-34 sm:h-32 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-stone-700">
+              {/* ═══ TAB 1: AÇÃO PADRÃO (ATAQUES, MAGIAS DE 1 AÇÃO, CONSUMÍVEIS, TÁTICAS) ═══ */}
+              {activeTab === 'action' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                  {/* Main Weapon Attack */}
                   <div
                     onClick={() =>
                       handleSelectAction({
@@ -435,58 +462,27 @@ export function BottomPlayerHud({
                         category: 'attack',
                         rangeSquares: activeHero.weapon.includes('Arco') ? 16 : 1,
                         damageFormula: activeHero.damage,
-                        description: `Desfere um ataque preciso com ${activeHero.weapon}.`
+                        description: `Desfere um ataque oficial com ${activeHero.weapon}.`,
+                        economyType: 'action'
                       })
                     }
-                    className="p-2.5 rounded-xl bg-gradient-to-br from-zinc-900 to-zinc-950 hover:from-amber-950/40 hover:to-zinc-900 border border-zinc-700/80 hover:border-amber-400/90 cursor-pointer shadow transition-all hover:scale-102 flex flex-col justify-between group"
+                    className="p-2 rounded-xl bg-stone-900/90 hover:bg-stone-850 border border-stone-700/80 hover:border-amber-500/80 cursor-pointer shadow-sm transition-all flex flex-col justify-between"
                   >
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="flex items-center gap-1.5">
-                        <Swords size={15} className="text-amber-400" />
-                        <strong className="text-zinc-100 text-xs font-bold">{activeHero.weapon}</strong>
+                    <div className="flex items-center justify-between mb-0.5">
+                      <div className="flex items-center gap-1.5 truncate">
+                        <Swords size={13} className="text-amber-400 shrink-0" />
+                        <strong className="text-stone-100 text-xs font-semibold truncate">{activeHero.weapon}</strong>
                       </div>
-                      <span className="text-[10px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 px-1.5 rounded">
+                      <span className="text-[10px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 px-1 rounded shrink-0">
                         {signed(activeHero.attack)}
                       </span>
                     </div>
-                    <div className="text-[11px] text-zinc-400 leading-tight mb-2">
-                      Ataque com arma principal. Adiciona bônus de proficiência e atributo.
+                    <div className="text-[11px] text-stone-400 leading-tight mb-1 truncate">
+                      Ataque com arma principal (1 Ação).
                     </div>
-                    <div className="flex items-center justify-between text-[11px] font-mono border-t border-zinc-800/80 pt-1">
+                    <div className="flex items-center justify-between text-[10px] font-mono border-t border-stone-800 pt-0.5">
                       <span className="text-red-400 font-bold">{activeHero.damage} Dano</span>
-                      <span className="text-zinc-400">{activeHero.weapon.includes('Arco') ? '24m (Distância)' : '1.5m (C.a.C)'}</span>
-                    </div>
-                  </div>
-
-                  {/* Unarmed Strike */}
-                  <div
-                    onClick={() =>
-                      handleSelectAction({
-                        id: 'attack-unarmed',
-                        name: 'Golpe Desarmado',
-                        category: 'attack',
-                        rangeSquares: 1,
-                        damageFormula: `1${signed(mod(activeHero.stats[0]))}`,
-                        description: 'Soco, chute ou cotovelada no combate corpo a corpo.'
-                      })
-                    }
-                    className="p-2.5 rounded-xl bg-zinc-900/80 hover:bg-zinc-855 border border-zinc-800 hover:border-zinc-600 cursor-pointer shadow transition-all hover:scale-102 flex flex-col justify-between"
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="flex items-center gap-1.5">
-                        <Zap size={14} className="text-zinc-400" />
-                        <strong className="text-zinc-200 text-xs font-bold">Golpe Desarmado</strong>
-                      </div>
-                      <span className="text-[10px] font-mono font-bold bg-zinc-800 text-zinc-300 px-1.5 rounded">
-                        {signed(prof(activeHero.level) + mod(activeHero.stats[0]))}
-                      </span>
-                    </div>
-                    <div className="text-[11px] text-zinc-400 leading-tight mb-2">
-                      Ataque físico básico. 1 + mod. de Força de dano de contusão.
-                    </div>
-                    <div className="flex items-center justify-between text-[11px] font-mono border-t border-zinc-800/80 pt-1">
-                      <span className="text-zinc-300 font-bold">1{signed(mod(activeHero.stats[0]))} Dano</span>
-                      <span className="text-zinc-400">1.5m</span>
+                      <span className="text-stone-400">{activeHero.weapon.includes('Arco') ? '24m (Distância)' : '1.5m (C.a.C)'}</span>
                     </div>
                   </div>
 
@@ -495,38 +491,35 @@ export function BottomPlayerHud({
                     onClick={() =>
                       handleSelectAction({
                         id: 'attack-dagger',
-                        name: 'Adaga Ágil',
+                        name: 'Golpe com Adaga',
                         category: 'attack',
                         rangeSquares: 4,
                         damageFormula: `1d4${signed(mod(activeHero.stats[1]))}`,
-                        description: 'Ataque veloz com lâmina secundária ou arremesso.'
+                        description: 'Golpe ágil de lâmina curta ou arremesso.',
+                        economyType: 'action'
                       })
                     }
-                    className="p-2.5 rounded-xl bg-zinc-900/80 hover:bg-zinc-855 border border-zinc-800 hover:border-zinc-600 cursor-pointer shadow transition-all hover:scale-102 flex flex-col justify-between"
+                    className="p-2 rounded-xl bg-stone-900/90 hover:bg-stone-850 border border-stone-700/80 hover:border-stone-600 cursor-pointer shadow-sm transition-all flex flex-col justify-between"
                   >
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="flex items-center gap-1.5">
-                        <Crosshair size={14} className="text-amber-400/80" />
-                        <strong className="text-zinc-200 text-xs font-bold">Adaga Curta</strong>
+                    <div className="flex items-center justify-between mb-0.5">
+                      <div className="flex items-center gap-1.5 truncate">
+                        <Crosshair size={13} className="text-amber-300/80 shrink-0" />
+                        <strong className="text-stone-200 text-xs font-semibold truncate">Adaga Ágil</strong>
                       </div>
-                      <span className="text-[10px] font-mono font-bold bg-zinc-800 text-zinc-300 px-1.5 rounded">
+                      <span className="text-[10px] font-mono font-bold bg-stone-800 text-stone-300 px-1 rounded shrink-0">
                         {signed(prof(activeHero.level) + mod(activeHero.stats[1]))}
                       </span>
                     </div>
-                    <div className="text-[11px] text-zinc-400 leading-tight mb-2">
-                      Lâmina leve e acuidade. Pode ser usada corpo a corpo ou arremessada.
+                    <div className="text-[11px] text-stone-400 leading-tight mb-1 truncate">
+                      Lâmina leve com acuidade (1 Ação).
                     </div>
-                    <div className="flex items-center justify-between text-[11px] font-mono border-t border-zinc-800/80 pt-1">
+                    <div className="flex items-center justify-between text-[10px] font-mono border-t border-stone-800 pt-0.5">
                       <span className="text-red-400 font-bold">1d4{signed(mod(activeHero.stats[1]))} Dano</span>
-                      <span className="text-zinc-400">6m (Arremesso)</span>
+                      <span className="text-stone-400">6m (Arremesso)</span>
                     </div>
                   </div>
-                </div>
-              )}
 
-              {/* ═══ TAB 2: MAGIAS & TRUQUES ═══ */}
-              {activeTab === 'spells' && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5">
+                  {/* 1-Action Spells (filtered to character's spellbook) */}
                   {heroSpells.map((s) => {
                     const isCantrip = s.level === 0;
                     const availableSlots = isCantrip ? 99 : Math.max(0, (activeHero.slots[s.level - 1] || 0) - (activeHero.usedSlots[s.level - 1] || 0));
@@ -546,48 +539,538 @@ export function BottomPlayerHud({
                             damageFormula: s.damageFormula,
                             healFormula: s.healFormula,
                             aoeRadius: s.aoeRadiusSquares,
-                            description: s.description
+                            description: s.description,
+                            economyType: 'action'
                           });
                         }}
-                        className={`p-2.5 rounded-xl border shadow transition-all flex flex-col justify-between ${
+                        className={`p-2 rounded-xl border shadow-sm transition-all flex flex-col justify-between ${
                           isDepleted
-                            ? 'bg-zinc-950/60 border-zinc-800 opacity-50 cursor-not-allowed'
-                            : 'bg-gradient-to-br from-zinc-900 via-zinc-900 to-purple-950/30 hover:border-purple-400/90 cursor-pointer hover:scale-102 border-zinc-700/80'
+                            ? 'bg-stone-950/60 border-stone-800 opacity-50 cursor-not-allowed'
+                            : 'bg-stone-900/90 hover:bg-stone-850 border-stone-700/80 hover:border-purple-400/80 cursor-pointer'
                         }`}
                       >
-                        <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center justify-between mb-0.5">
                           <div className="flex items-center gap-1.5 truncate">
-                            <Sparkles size={14} className={isCantrip ? 'text-cyan-400' : 'text-purple-400'} />
-                            <strong className="text-zinc-100 text-xs font-bold truncate">{s.name}</strong>
+                            <Sparkles size={13} className={isCantrip ? 'text-cyan-400' : 'text-purple-400'} />
+                            <strong className="text-stone-100 text-xs font-semibold truncate">{s.name}</strong>
                           </div>
-                          <span className={`text-[10px] font-mono font-bold px-1.5 rounded shrink-0 ${
-                            isCantrip ? 'bg-cyan-950 text-cyan-300 border border-cyan-700/60' : 'bg-purple-950 text-purple-300 border border-purple-700/60'
+                          <span className={`text-[10px] font-mono font-bold px-1 rounded shrink-0 ${
+                            isCantrip ? 'bg-cyan-950 text-cyan-300 border border-cyan-800/60' : 'bg-purple-950 text-purple-300 border border-purple-800/60'
                           }`}>
                             {isCantrip ? 'Truque' : `Círc. ${s.level}`}
                           </span>
                         </div>
-                        <div className="text-[11px] text-zinc-400 leading-tight mb-2 line-clamp-2">
+                        <div className="text-[11px] text-stone-400 leading-tight mb-1 truncate">
                           {s.description}
                         </div>
-                        <div className="flex items-center justify-between text-[11px] font-mono border-t border-zinc-800/80 pt-1">
+                        <div className="flex items-center justify-between text-[10px] font-mono border-t border-stone-800 pt-0.5">
                           {s.damageFormula ? (
                             <span className="text-red-400 font-bold">{s.damageFormula} Dano</span>
                           ) : s.healFormula ? (
                             <span className="text-emerald-400 font-bold">{s.healFormula} Cura</span>
                           ) : (
-                            <span className="text-zinc-400">Efeito Arcano</span>
+                            <span className="text-stone-400">Magia 5e</span>
                           )}
-                          <span className="text-zinc-400">{s.rangeSquares * 1.5}m</span>
+                          <span className="text-stone-400">{s.rangeSquares * 1.5}m</span>
                         </div>
                       </div>
                     );
                   })}
+
+                  {/* Consumable Potion */}
+                  <div
+                    onClick={() => {
+                      if (onUseItem) onUseItem('pocao-cura', activeHero.id);
+                      else handleSelectAction({
+                        id: 'pocao-cura',
+                        name: 'Poção de Cura',
+                        category: 'item',
+                        rangeSquares: 1,
+                        healFormula: '2d4+2',
+                        description: 'Bebe uma poção mágica revigorante (1 Ação).',
+                        economyType: 'action'
+                      });
+                    }}
+                    className="p-2 rounded-xl bg-stone-900/90 hover:bg-stone-850 border border-stone-700/80 hover:border-emerald-500/80 cursor-pointer shadow-sm transition-all flex flex-col justify-between"
+                  >
+                    <div className="flex items-center justify-between mb-0.5">
+                      <div className="flex items-center gap-1.5">
+                        <Heart size={13} className="text-emerald-400" />
+                        <strong className="text-stone-100 text-xs font-semibold">Poção de Cura</strong>
+                      </div>
+                      <span className="text-[10px] font-mono font-bold bg-emerald-950 text-emerald-300 border border-emerald-800/60 px-1 rounded">
+                        1 Ação
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-stone-400 leading-tight mb-1 truncate">
+                      Restaura instantaneamente 2d4+2 PV.
+                    </div>
+                    <div className="flex items-center justify-between text-[10px] font-mono border-t border-stone-800 pt-0.5">
+                      <span className="text-emerald-400 font-bold">+2d4+2 PV</span>
+                      <span className="text-stone-400">Pessoal</span>
+                    </div>
+                  </div>
+
+                  {/* Dodge (Esquivar) */}
+                  <div
+                    onClick={() =>
+                      handleSelectAction({
+                        id: 'esquivar',
+                        name: 'Esquivar',
+                        category: 'action',
+                        rangeSquares: 0,
+                        description: 'Foca totalmente em se defender. Ataques contra você têm desvantagem até seu próximo turno.',
+                        economyType: 'action'
+                      })
+                    }
+                    className="p-2 rounded-xl bg-stone-900/90 hover:bg-stone-850 border border-stone-700/80 hover:border-cyan-500/80 cursor-pointer shadow-sm transition-all flex flex-col justify-between"
+                  >
+                    <div className="flex items-center justify-between mb-0.5">
+                      <div className="flex items-center gap-1.5">
+                        <ShieldAlert size={13} className="text-cyan-400" />
+                        <strong className="text-stone-100 text-xs font-semibold">Esquivar</strong>
+                      </div>
+                      <span className="text-[10px] font-mono font-bold bg-cyan-950 text-cyan-300 border border-cyan-800/60 px-1 rounded">
+                        1 Ação
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-stone-400 leading-tight mb-1 truncate">
+                      Impõe desvantagem a todos os ataques sofridos.
+                    </div>
+                    <div className="flex items-center justify-between text-[10px] font-mono border-t border-stone-800 pt-0.5">
+                      <span className="text-cyan-300 font-bold">Defesa 5e</span>
+                      <span className="text-stone-400">1 rodada</span>
+                    </div>
+                  </div>
+
+                  {/* Hide (Esconder-se) */}
+                  <div
+                    onClick={() =>
+                      handleSelectAction({
+                        id: 'esconder',
+                        name: 'Esconder-se',
+                        category: 'action',
+                        rangeSquares: 0,
+                        description: 'Faz um teste de Destreza (Furtividade) para se ocultar dos inimigos.',
+                        economyType: 'action'
+                      })
+                    }
+                    className="p-2 rounded-xl bg-stone-900/90 hover:bg-stone-850 border border-stone-700/80 hover:border-stone-600 cursor-pointer shadow-sm transition-all flex flex-col justify-between"
+                  >
+                    <div className="flex items-center justify-between mb-0.5">
+                      <div className="flex items-center gap-1.5">
+                        <EyeOff size={13} className="text-stone-400" />
+                        <strong className="text-stone-100 text-xs font-semibold">Esconder-se</strong>
+                      </div>
+                      <span className="text-[10px] font-mono font-bold bg-stone-800 text-stone-300 px-1 rounded">
+                        1 Ação
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-stone-400 leading-tight mb-1 truncate">
+                      Teste de Furtividade para ficar oculto.
+                    </div>
+                    <div className="flex items-center justify-between text-[10px] font-mono border-t border-stone-800 pt-0.5">
+                      <span className="text-amber-400 font-bold">Furtividade</span>
+                      <span className="text-stone-400">Tático</span>
+                    </div>
+                  </div>
                 </div>
               )}
 
-              {/* ═══ TAB 3: TODAS AS 18 PERÍCIAS D&D 5e ═══ */}
+              {/* ═══ TAB 2: AÇÃO BÔNUS (HABILIDADES DE CLASSE, ARMA SECUNDÁRIA, RETOMAR FÔLEGO, ETC.) ═══ */}
+              {activeTab === 'bonus' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                  {/* Fighter Class: Second Wind */}
+                  {activeHero.className === 'Guerreiro' && (
+                    <div
+                      onClick={() =>
+                        handleSelectAction({
+                          id: 'retomar-folego',
+                          name: 'Retomar o Fôlego',
+                          category: 'action',
+                          rangeSquares: 0,
+                          healFormula: `1d10+${activeHero.level}`,
+                          description: 'No seu turno, você pode usar uma ação bônus para recuperar 1d10 + nível em pontos de vida (1x por descanso curto).',
+                          economyType: 'bonus'
+                        })
+                      }
+                      className="p-2 rounded-xl bg-stone-900/90 hover:bg-stone-850 border border-amber-600/70 hover:border-amber-400 cursor-pointer shadow-sm transition-all flex flex-col justify-between"
+                    >
+                      <div className="flex items-center justify-between mb-0.5">
+                        <div className="flex items-center gap-1.5">
+                          <Activity size={13} className="text-amber-400" />
+                          <strong className="text-stone-100 text-xs font-semibold">Retomar o Fôlego</strong>
+                        </div>
+                        <span className="text-[10px] font-mono font-bold bg-amber-950 text-amber-300 border border-amber-700/60 px-1 rounded">
+                          Bônus
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-stone-400 leading-tight mb-1 truncate">
+                        Guerreiro: Cura 1d10 + {activeHero.level} PV no próprio turno.
+                      </div>
+                      <div className="flex items-center justify-between text-[10px] font-mono border-t border-stone-800 pt-0.5">
+                        <span className="text-emerald-400 font-bold">+1d10+{activeHero.level} PV</span>
+                        <span className="text-stone-400">Descanso Curto</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Barbarian Class: Rage */}
+                  {activeHero.className === 'Bárbaro' && (
+                    <div
+                      onClick={() =>
+                        handleSelectAction({
+                          id: 'furia-barbara',
+                          name: 'Entrar em Fúria',
+                          category: 'action',
+                          rangeSquares: 0,
+                          description: 'Entra em fúria como ação bônus: ganha vantagem em testes de Força, +2 no dano corpo a corpo e resistência a dano cortante/perfurante/concussão.',
+                          economyType: 'bonus'
+                        })
+                      }
+                      className="p-2 rounded-xl bg-stone-900/90 hover:bg-stone-850 border border-red-600/70 hover:border-red-400 cursor-pointer shadow-sm transition-all flex flex-col justify-between"
+                    >
+                      <div className="flex items-center justify-between mb-0.5">
+                        <div className="flex items-center gap-1.5">
+                          <Flame size={13} className="text-red-400" />
+                          <strong className="text-stone-100 text-xs font-semibold">Fúria Primitiva</strong>
+                        </div>
+                        <span className="text-[10px] font-mono font-bold bg-red-950 text-red-300 border border-red-700/60 px-1 rounded">
+                          Bônus
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-stone-400 leading-tight mb-1 truncate">
+                        +2 Dano corpo a corpo e resistência a dano físico.
+                      </div>
+                      <div className="flex items-center justify-between text-[10px] font-mono border-t border-stone-800 pt-0.5">
+                        <span className="text-red-400 font-bold">+2 Dano / Resist.</span>
+                        <span className="text-stone-400">10 Rodadas</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Rogue Class: Cunning Action */}
+                  {activeHero.className === 'Ladino' && (
+                    <div
+                      onClick={() =>
+                        handleSelectAction({
+                          id: 'acao-ardilosa-desengajar',
+                          name: 'Ação Ardilosa: Desengajar',
+                          category: 'action',
+                          rangeSquares: 0,
+                          description: 'Ladino: Você pode Desengajar, Disparar ou Esconder-se como uma Ação Bônus em cada um dos seus turnos.',
+                          economyType: 'bonus'
+                        })
+                      }
+                      className="p-2 rounded-xl bg-stone-900/90 hover:bg-stone-850 border border-purple-600/70 hover:border-purple-400 cursor-pointer shadow-sm transition-all flex flex-col justify-between"
+                    >
+                      <div className="flex items-center justify-between mb-0.5">
+                        <div className="flex items-center gap-1.5">
+                          <Wind size={13} className="text-purple-400" />
+                          <strong className="text-stone-100 text-xs font-semibold">Ação Ardilosa</strong>
+                        </div>
+                        <span className="text-[10px] font-mono font-bold bg-purple-950 text-purple-300 border border-purple-700/60 px-1 rounded">
+                          Bônus
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-stone-400 leading-tight mb-1 truncate">
+                        Desengaja sem provocar ataques como ação bônus.
+                      </div>
+                      <div className="flex items-center justify-between text-[10px] font-mono border-t border-stone-800 pt-0.5">
+                        <span className="text-purple-300 font-bold">Ladino 5e</span>
+                        <span className="text-stone-400">Ilimitado</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Two-Weapon Fighting Offhand Attack */}
+                  <div
+                    onClick={() =>
+                      handleSelectAction({
+                        id: 'attack-offhand',
+                        name: 'Golpe com Arma Secundária',
+                        category: 'attack',
+                        rangeSquares: 1,
+                        damageFormula: '1d4',
+                        description: 'Ataque veloz com arma secundária leve na mão inábil usando uma Ação Bônus.',
+                        economyType: 'bonus'
+                      })
+                    }
+                    className="p-2 rounded-xl bg-stone-900/90 hover:bg-stone-850 border border-stone-700/80 hover:border-amber-400/80 cursor-pointer shadow-sm transition-all flex flex-col justify-between"
+                  >
+                    <div className="flex items-center justify-between mb-0.5">
+                      <div className="flex items-center gap-1.5">
+                        <Swords size={13} className="text-amber-400" />
+                        <strong className="text-stone-100 text-xs font-semibold">Arma Secundária</strong>
+                      </div>
+                      <span className="text-[10px] font-mono font-bold bg-amber-950 text-amber-300 border border-amber-700/60 px-1 rounded">
+                        Bônus
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-stone-400 leading-tight mb-1 truncate">
+                      Combate com duas armas (sem bônus de atributo no dano).
+                    </div>
+                    <div className="flex items-center justify-between text-[10px] font-mono border-t border-stone-800 pt-0.5">
+                      <span className="text-red-400 font-bold">1d4 Dano</span>
+                      <span className="text-stone-400">1.5m</span>
+                    </div>
+                  </div>
+
+                  {/* Quick Pocket Potion */}
+                  <div
+                    onClick={() => {
+                      if (onUseItem) onUseItem('pocao-cura', activeHero.id);
+                    }}
+                    className="p-2 rounded-xl bg-stone-900/90 hover:bg-stone-850 border border-stone-700/80 hover:border-emerald-500/80 cursor-pointer shadow-sm transition-all flex flex-col justify-between"
+                  >
+                    <div className="flex items-center justify-between mb-0.5">
+                      <div className="flex items-center gap-1.5">
+                        <Heart size={13} className="text-emerald-400" />
+                        <strong className="text-stone-100 text-xs font-semibold">Poção Rápida</strong>
+                      </div>
+                      <span className="text-[10px] font-mono font-bold bg-emerald-950 text-emerald-300 border border-emerald-800/60 px-1 rounded">
+                        Bônus
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-stone-400 leading-tight mb-1 truncate">
+                      Bebe rapidamente uma poção do cinto no combate.
+                    </div>
+                    <div className="flex items-center justify-between text-[10px] font-mono border-t border-stone-800 pt-0.5">
+                      <span className="text-emerald-400 font-bold">+2d4+2 PV</span>
+                      <span className="text-stone-400">Consumível</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ═══ TAB 3: MOVIMENTO (ORÇAMENTO, DISPARAR, DESENGAJAR, ROTA) ═══ */}
+              {activeTab === 'movement' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                  {/* Speed Overview Card */}
+                  <div className="p-2 rounded-xl bg-stone-900/90 border border-cyan-700/70 shadow-sm flex flex-col justify-between">
+                    <div className="flex items-center justify-between mb-0.5">
+                      <div className="flex items-center gap-1.5">
+                        <Footprints size={13} className="text-cyan-400" />
+                        <strong className="text-stone-100 text-xs font-semibold">Deslocamento Base</strong>
+                      </div>
+                      <span className="text-[10px] font-mono font-bold bg-cyan-950 text-cyan-300 border border-cyan-800/60 px-1 rounded">
+                        {activeHero.speed}m
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-stone-300 leading-tight mb-1">
+                      Equivale a <strong>{Math.round(activeHero.speed / 1.5)} quadrados</strong> (1.5m / 5 pés cada).
+                    </div>
+                    <div className="text-[10px] font-mono text-cyan-300 border-t border-stone-800 pt-0.5">
+                      Clique no mapa para traçar rota com A*
+                    </div>
+                  </div>
+
+                  {/* Dash (Disparar) */}
+                  <div
+                    onClick={() =>
+                      handleSelectAction({
+                        id: 'disparar',
+                        name: 'Disparar (Dash)',
+                        category: 'action',
+                        rangeSquares: 0,
+                        description: 'Você ganha deslocamento extra no turno atual igual à sua velocidade (dobra o movimento).',
+                        economyType: 'action'
+                      })
+                    }
+                    className="p-2 rounded-xl bg-stone-900/90 hover:bg-stone-850 border border-stone-700/80 hover:border-cyan-400/80 cursor-pointer shadow-sm transition-all flex flex-col justify-between"
+                  >
+                    <div className="flex items-center justify-between mb-0.5">
+                      <div className="flex items-center gap-1.5">
+                        <Footprints size={13} className="text-amber-400" />
+                        <strong className="text-stone-100 text-xs font-semibold">Disparar (Dash)</strong>
+                      </div>
+                      <span className="text-[10px] font-mono font-bold bg-amber-950 text-amber-300 border border-amber-800/60 px-1 rounded">
+                        1 Ação
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-stone-400 leading-tight mb-1 truncate">
+                      Dobra seu deslocamento no turno atual (+{activeHero.speed}m).
+                    </div>
+                    <div className="flex items-center justify-between text-[10px] font-mono border-t border-stone-800 pt-0.5">
+                      <span className="text-amber-300 font-bold">+{activeHero.speed}m extra</span>
+                      <span className="text-stone-400">Regra 5e</span>
+                    </div>
+                  </div>
+
+                  {/* Disengage (Desengajar) */}
+                  <div
+                    onClick={() =>
+                      handleSelectAction({
+                        id: 'desengajar',
+                        name: 'Desengajar',
+                        category: 'action',
+                        rangeSquares: 0,
+                        description: 'Seu movimento não provoca ataques de oportunidade de inimigos pelo restante do turno.',
+                        economyType: 'action'
+                      })
+                    }
+                    className="p-2 rounded-xl bg-stone-900/90 hover:bg-stone-850 border border-stone-700/80 hover:border-cyan-400/80 cursor-pointer shadow-sm transition-all flex flex-col justify-between"
+                  >
+                    <div className="flex items-center justify-between mb-0.5">
+                      <div className="flex items-center gap-1.5">
+                        <Wind size={13} className="text-cyan-400" />
+                        <strong className="text-stone-100 text-xs font-semibold">Desengajar</strong>
+                      </div>
+                      <span className="text-[10px] font-mono font-bold bg-cyan-950 text-cyan-300 border border-cyan-800/60 px-1 rounded">
+                        1 Ação
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-stone-400 leading-tight mb-1 truncate">
+                      Evita ataques de oportunidade ao se afastar.
+                    </div>
+                    <div className="flex items-center justify-between text-[10px] font-mono border-t border-stone-800 pt-0.5">
+                      <span className="text-cyan-300 font-bold">Recuo Seguro</span>
+                      <span className="text-stone-400">1 Turno</span>
+                    </div>
+                  </div>
+
+                  {/* Stand Up (Levantar-se) */}
+                  <div
+                    onClick={() =>
+                      handleSelectAction({
+                        id: 'levantar',
+                        name: 'Levantar-se',
+                        category: 'action',
+                        rangeSquares: 0,
+                        description: 'Levanta-se do chão gastando metade do seu deslocamento total no turno.',
+                        economyType: 'movement'
+                      })
+                    }
+                    className="p-2 rounded-xl bg-stone-900/90 hover:bg-stone-850 border border-stone-700/80 hover:border-stone-600 cursor-pointer shadow-sm transition-all flex flex-col justify-between"
+                  >
+                    <div className="flex items-center justify-between mb-0.5">
+                      <div className="flex items-center gap-1.5">
+                        <RotateCcw size={13} className="text-stone-400" />
+                        <strong className="text-stone-100 text-xs font-semibold">Levantar-se</strong>
+                      </div>
+                      <span className="text-[10px] font-mono font-bold bg-stone-800 text-stone-300 px-1 rounded">
+                        Custo: Metade
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-stone-400 leading-tight mb-1 truncate">
+                      Custa {Math.round(activeHero.speed / 2)}m para se levantar se caído.
+                    </div>
+                    <div className="flex items-center justify-between text-[10px] font-mono border-t border-stone-800 pt-0.5">
+                      <span className="text-stone-300 font-bold">5e Caído</span>
+                      <span className="text-stone-400">Imediato</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ═══ TAB 4: REAÇÃO (ATAQUE DE OPORTUNIDADE, ESCUDO ARCANO, PREPARAR) ═══ */}
+              {activeTab === 'reaction' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                  {/* Opportunity Attack */}
+                  <div
+                    onClick={() =>
+                      handleSelectAction({
+                        id: 'ataque-oportunidade',
+                        name: 'Ataque de Oportunidade',
+                        category: 'action',
+                        rangeSquares: 1,
+                        damageFormula: activeHero.damage,
+                        description: 'Reação: Você pode desferir um ataque corpo a corpo quando uma criatura hostil que você possa ver sai do seu alcance (1.5m).',
+                        economyType: 'reaction'
+                      })
+                    }
+                    className="p-2 rounded-xl bg-stone-900/90 hover:bg-stone-850 border border-purple-700/70 hover:border-purple-400/80 cursor-pointer shadow-sm transition-all flex flex-col justify-between"
+                  >
+                    <div className="flex items-center justify-between mb-0.5">
+                      <div className="flex items-center gap-1.5">
+                        <Swords size={13} className="text-purple-400" />
+                        <strong className="text-stone-100 text-xs font-semibold">Ataque de Oportunidade</strong>
+                      </div>
+                      <span className="text-[10px] font-mono font-bold bg-purple-950 text-purple-300 border border-purple-800/60 px-1 rounded">
+                        Reação
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-stone-400 leading-tight mb-1 truncate">
+                      Ataca quando o inimigo sai do seu alcance de 1.5m.
+                    </div>
+                    <div className="flex items-center justify-between text-[10px] font-mono border-t border-stone-800 pt-0.5">
+                      <span className="text-red-400 font-bold">{activeHero.damage} Dano</span>
+                      <span className="text-stone-400">Automático</span>
+                    </div>
+                  </div>
+
+                  {/* Shield Spell (Escudo Arcano) for Spellcasters */}
+                  {['Mago', 'Feiticeiro', 'Bruxo'].includes(activeHero.className) && (
+                    <div
+                      onClick={() =>
+                        handleSelectAction({
+                          id: 'escudo-arcano',
+                          name: 'Escudo Arcano (Shield)',
+                          category: 'spell',
+                          rangeSquares: 0,
+                          spellLevel: 1,
+                          description: 'Reação quando você é atingido por um ataque: concede +5 na sua Classe de Armadura até o início do seu próximo turno.',
+                          economyType: 'reaction'
+                        })
+                      }
+                      className="p-2 rounded-xl bg-stone-900/90 hover:bg-stone-850 border border-cyan-700/70 hover:border-cyan-400 cursor-pointer shadow-sm transition-all flex flex-col justify-between"
+                    >
+                      <div className="flex items-center justify-between mb-0.5">
+                        <div className="flex items-center gap-1.5">
+                          <Shield size={13} className="text-cyan-400" />
+                          <strong className="text-stone-100 text-xs font-semibold">Escudo Arcano</strong>
+                        </div>
+                        <span className="text-[10px] font-mono font-bold bg-cyan-950 text-cyan-300 border border-cyan-800/60 px-1 rounded">
+                          Reação (C1)
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-stone-400 leading-tight mb-1 truncate">
+                        Concede +5 de CA ao sofrer ataque.
+                      </div>
+                      <div className="flex items-center justify-between text-[10px] font-mono border-t border-stone-800 pt-0.5">
+                        <span className="text-cyan-300 font-bold">+5 CA</span>
+                        <span className="text-stone-400">1 Rodada</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Ready Action (Preparar Ação) */}
+                  <div
+                    onClick={() =>
+                      handleSelectAction({
+                        id: 'preparar-acao',
+                        name: 'Preparar Ação (Ready)',
+                        category: 'action',
+                        rangeSquares: 0,
+                        description: 'Você prepara uma ação no seu turno para ser disparada como reação quando um gatilho específico acontecer antes do seu próximo turno.',
+                        economyType: 'reaction'
+                      })
+                    }
+                    className="p-2 rounded-xl bg-stone-900/90 hover:bg-stone-850 border border-stone-700/80 hover:border-amber-400/80 cursor-pointer shadow-sm transition-all flex flex-col justify-between"
+                  >
+                    <div className="flex items-center justify-between mb-0.5">
+                      <div className="flex items-center gap-1.5">
+                        <Target size={13} className="text-amber-400" />
+                        <strong className="text-stone-100 text-xs font-semibold">Preparar Ação</strong>
+                      </div>
+                      <span className="text-[10px] font-mono font-bold bg-amber-950 text-amber-300 border border-amber-800/60 px-1 rounded">
+                        Reação
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-stone-400 leading-tight mb-1 truncate">
+                      Define gatilho para disparar ação fora da vez.
+                    </div>
+                    <div className="flex items-center justify-between text-[10px] font-mono border-t border-stone-800 pt-0.5">
+                      <span className="text-amber-300 font-bold">Gatilho Tático</span>
+                      <span className="text-stone-400">1 Rodada</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ═══ TAB 5: TODAS AS 18 PERÍCIAS OFICIAIS D&D 5E ═══ */}
               {activeTab === 'skills' && (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-1.5">
                   {ALL_5E_SKILLS.map((sk) => {
                     const isProf = activeHero.skills.includes(sk.name);
                     const isExp = activeHero.expertise.includes(sk.name);
@@ -607,119 +1090,29 @@ export function BottomPlayerHud({
                             description: `Realiza um teste oficial de ${sk.name} (${sk.attrName}) com modificador ${signed(totalBonus)}.`
                           })
                         }
-                        className={`p-2 rounded-xl border text-left transition-all shadow-sm flex flex-col justify-between active:scale-95 ${
+                        className={`p-1.5 rounded-lg border text-left transition-all shadow-sm flex flex-col justify-between cursor-pointer active:scale-95 ${
                           isExp
-                            ? 'bg-amber-950/40 border-amber-400/80 text-amber-200'
+                            ? 'bg-amber-950/40 border-amber-500/80 text-amber-200'
                             : isProf
-                            ? 'bg-zinc-900 border-zinc-700 text-zinc-100 hover:border-amber-400/70'
-                            : 'bg-zinc-950/80 border-zinc-800/80 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
+                            ? 'bg-stone-900 border-stone-700 text-stone-100 hover:border-amber-400/70'
+                            : 'bg-stone-950/80 border-stone-800/80 text-stone-400 hover:text-stone-200 hover:bg-stone-900'
                         }`}
                       >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-[11px] font-bold truncate">{sk.name}</span>
+                        <div className="flex items-center justify-between mb-0.5">
+                          <span className="text-[11px] font-semibold truncate">{sk.name}</span>
                           {isExp ? (
-                            <Award size={12} className="text-amber-400 shrink-0" title="Especialista" />
+                            <span title="Especialista"><Award size={11} className="text-amber-400 shrink-0" /></span>
                           ) : isProf ? (
-                            <CheckCircle2 size={11} className="text-emerald-400 shrink-0" title="Proficiente" />
+                            <span title="Proficiente"><CheckCircle2 size={10} className="text-emerald-400 shrink-0" /></span>
                           ) : null}
                         </div>
                         <div className="flex items-center justify-between text-[10px] font-mono">
-                          <span className="text-zinc-500">{sk.attrName}</span>
+                          <span className="text-stone-500">{sk.attrName}</span>
                           <span className="font-bold text-amber-400 text-xs">{signed(totalBonus)}</span>
                         </div>
                       </button>
                     );
                   })}
-                </div>
-              )}
-
-              {/* ═══ TAB 4: ITENS & CONSUMÍVEIS ═══ */}
-              {activeTab === 'items' && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5">
-                  {['pocao-cura', 'pocao-cura-maior', 'antidoto', 'tocha'].map((itemId) => {
-                    const it = ITEMS_CATALOG[itemId];
-                    if (!it) return null;
-                    const isConsumable = it.type === 'consumivel';
-
-                    return (
-                      <div
-                        key={itemId}
-                        className="p-2.5 rounded-xl bg-zinc-900/90 border border-zinc-700/80 hover:border-emerald-400/80 shadow flex flex-col justify-between transition-all"
-                      >
-                        <div className="flex items-center justify-between mb-1">
-                          <div className="flex items-center gap-1.5">
-                            <Heart size={14} className="text-emerald-400" />
-                            <strong className="text-zinc-100 text-xs font-bold">{it.name}</strong>
-                          </div>
-                          <span className="text-[10px] font-mono font-bold bg-emerald-950 text-emerald-300 border border-emerald-700/60 px-1.5 rounded">
-                            {it.type}
-                          </span>
-                        </div>
-                        <div className="text-[11px] text-zinc-400 leading-tight mb-2">
-                          {it.description}
-                        </div>
-                        <div className="flex items-center justify-between border-t border-zinc-800/80 pt-1.5">
-                          <span className="text-[11px] font-mono text-emerald-400 font-bold">
-                            {it.healFormula ? `+${it.healFormula} PV` : 'Efeito Imediato'}
-                          </span>
-                          <button
-                            disabled={busy || (isCombat && actionUsed)}
-                            onClick={() => {
-                              if (isConsumable && onUseItem) {
-                                onUseItem(itemId, activeHero.id);
-                              } else {
-                                onActionSelect({
-                                  id: itemId,
-                                  name: it.name,
-                                  category: 'item',
-                                  rangeSquares: 1,
-                                  healFormula: it.healFormula,
-                                  description: it.description
-                                });
-                              }
-                            }}
-                            className="px-2.5 py-0.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-black font-bold text-xs shadow active:scale-95 transition-all"
-                          >
-                            Consumir
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* ═══ TAB 5: AÇÕES TÁTICAS 5E ═══ */}
-              {activeTab === 'tactics' && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5">
-                  {TACTICAL_ACTIONS.map((tac) => (
-                    <div
-                      key={tac.id}
-                      onClick={() =>
-                        onActionSelect({
-                          id: tac.id,
-                          name: tac.name,
-                          category: 'action',
-                          rangeSquares: 0,
-                          description: tac.description
-                        })
-                      }
-                      className="p-2.5 rounded-xl bg-zinc-900/80 hover:bg-zinc-850 border border-zinc-800 hover:border-cyan-400/80 cursor-pointer shadow transition-all hover:scale-102 flex flex-col justify-between"
-                    >
-                      <div className="flex items-center justify-between mb-1">
-                        <div className="flex items-center gap-1.5">
-                          <Wind size={14} className="text-cyan-400" />
-                          <strong className="text-zinc-100 text-xs font-bold">{tac.name}</strong>
-                        </div>
-                        <span className="text-[10px] font-mono font-bold bg-cyan-950 text-cyan-300 border border-cyan-800/60 px-1.5 rounded">
-                          1 Ação
-                        </span>
-                      </div>
-                      <div className="text-[11px] text-zinc-300 leading-relaxed mb-1">
-                        {tac.description}
-                      </div>
-                    </div>
-                  ))}
                 </div>
               )}
             </div>

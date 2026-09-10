@@ -30,6 +30,13 @@ import type { Character, Enemy } from '@/lib/game-engine';
 import type { ActionSelection } from './bottom-player-hud';
 import type { ProceduralDungeon, TileType } from '@/lib/dungeon-generator';
 import type { Battlemap, OrganicTileType } from '@/lib/battlemap-biomes';
+import {
+  MAP_COLLISION_PROFILES,
+  isGridTileWalkable,
+  findPathAStar,
+  calculateMovementBudget,
+  type Point
+} from '@/lib/collision-system';
 
 // Map action/weapon/spell names to VFX CSS class
 function getVfxClass(actionName: string): string {
@@ -115,6 +122,8 @@ interface TacticalMapProps {
   npcs?: MapNpc[];
   onTalkNpc?: (npcId: string) => void;
   projectiles?: ProjectileVfx[];
+  movementUsed?: number;
+  biome?: 'village' | 'forest' | 'dungeon';
 }
 
 export function TacticalMap({
@@ -138,7 +147,9 @@ export function TacticalMap({
   activeTurnId,
   npcs,
   onTalkNpc,
-  projectiles
+  projectiles,
+  movementUsed = 0,
+  biome
 }: TacticalMapProps) {
   const [fogOfWar, setFogOfWar] = useState(true);
   const [zoomScale, setZoomScale] = useState(1);
@@ -213,6 +224,67 @@ export function TacticalMap({
   const gridSize = battlemap ? battlemap.width : dungeon ? dungeon.width : 8;
   const activeHero = characters.find((c) => c.id === selectedHeroId) || characters[0];
 
+  const [debugCollisions, setDebugCollisions] = useState(false);
+
+  // Determine current active biome
+  const currentBiome: 'village' | 'forest' | 'dungeon' =
+    biome ||
+    (battlemap?.biome as any) ||
+    (locationName.toLowerCase().includes('floresta') ? 'forest' : locationName.toLowerCase().includes('dungeon') || locationName.toLowerCase().includes('catacumba') ? 'dungeon' : 'village');
+
+  const collisionProfile = MAP_COLLISION_PROFILES[currentBiome] || MAP_COLLISION_PROFILES.village;
+
+  // Impactful Exploration -> Combat transition banner
+  const [combatTransition, setCombatTransition] = useState(false);
+  const wasCombatRef = useRef(isCombat);
+  useEffect(() => {
+    if (!wasCombatRef.current && isCombat) {
+      setCombatTransition(true);
+      const timer = setTimeout(() => setCombatTransition(false), 2400);
+      return () => clearTimeout(timer);
+    }
+    wasCombatRef.current = isCombat;
+  }, [isCombat]);
+
+  // Movement budget in combat (D&D 5e: Speed / 1.5m)
+  const moveBudget = useMemo(() => {
+    const speed = activeHero?.speed || 9;
+    return calculateMovementBudget(speed, movementUsed);
+  }, [activeHero?.speed, movementUsed]);
+
+  // Set of occupied tiles (living entities other than active hero)
+  const occupiedTiles = useMemo(() => {
+    const set = new Set<string>();
+    for (const c of characters) {
+      if (c.id !== activeHero?.id && c.hp > 0) {
+        set.add(`${c.x},${c.y}`);
+      }
+    }
+    for (const e of enemies) {
+      if (e.hp > 0) {
+        set.add(`${e.x},${e.y}`);
+      }
+    }
+    return set;
+  }, [characters, enemies, activeHero?.id]);
+
+  // A* calculated path from active hero to hovered square navigating obstacles
+  const activePath = useMemo(() => {
+    if (!hoveredSquare || !activeHero || targetingAction) return [];
+    if (activeHero.x === hoveredSquare.x && activeHero.y === hoveredSquare.y) return [];
+    return findPathAStar(
+      { x: activeHero.x, y: activeHero.y },
+      hoveredSquare,
+      currentBiome,
+      gridSize,
+      occupiedTiles
+    );
+  }, [activeHero, hoveredSquare, targetingAction, currentBiome, gridSize, occupiedTiles]);
+
+  const pathStepCount = activePath.length > 0 ? activePath.length - 1 : 0;
+  const pathMeters = (pathStepCount * 1.5).toFixed(1);
+  const isPathAffordable = !isCombat || pathStepCount <= moveBudget.remainingSquares;
+
   // Calculate vision / illumination around heroes (radius = 5 squares)
   const isIlluminated = (x: number, y: number) => {
     if (!fogOfWar) return true;
@@ -229,18 +301,7 @@ export function TacticalMap({
     return dist <= targetingAction.rangeSquares;
   };
 
-  // Movement distance calculation for hovered tile
-  const moveDistance = useMemo(() => {
-    if (!hoveredSquare || !activeHero || targetingAction) return null;
-    const dx = Math.abs(activeHero.x - hoveredSquare.x);
-    const dy = Math.abs(activeHero.y - hoveredSquare.y);
-    const steps = Math.max(dx, dy); // Chebyshev 5e diagonal rule
-    const meters = (steps * 1.5).toFixed(1);
-    const isValid = steps > 0 && steps <= Math.floor(activeHero.speed / 1.5);
-    return { steps, meters, isValid };
-  }, [hoveredSquare, activeHero, targetingAction]);
-
-  // Helper to determine tile type and visual classes
+  // Helper to determine tile type
   const getTileInfo = (x: number, y: number) => {
     if (battlemap && battlemap.tiles[y]?.[x]) {
       const t = battlemap.tiles[y][x];
@@ -272,13 +333,13 @@ export function TacticalMap({
       onWheel={handleWheel}
       data-board-bg="true"
     >
-      {/* Battle Map Grid Board — FULL-BLEED CANVAS (fills entire parent) */}
+      {/* Battle Map Grid Board — FULL-BLEED CANVAS */}
       <div
         className="relative w-full h-full bg-[#050806] overflow-hidden"
         data-board-bg="true"
       >
         {/* In-Game Location Pill (Floating Top-Left) */}
-        <div className="absolute top-2.5 left-2.5 z-20 flex items-center gap-1.5 bg-zinc-950/85 border border-zinc-700/80 rounded-full px-2.5 py-1 text-xs backdrop-blur-md shadow-lg pointer-events-none">
+        <div className="absolute top-2.5 left-2.5 z-30 flex items-center gap-1.5 bg-zinc-950/85 border border-zinc-700/80 rounded-full px-2.5 py-1 text-xs backdrop-blur-md shadow-lg pointer-events-none">
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
           <span className="font-serif font-bold text-amber-200 tracking-wide text-xs truncate max-w-[130px] sm:max-w-[200px]">
             {locationName}
@@ -288,12 +349,12 @@ export function TacticalMap({
           </span>
         </div>
 
-        {/* In-Game Vision & Scale Controls (Floating Top-Right) */}
-        <div className="absolute top-2.5 right-2.5 z-20 flex items-center gap-1 bg-[#111612]/90 border border-zinc-700/80 rounded-full px-2 py-1 text-xs backdrop-blur-md shadow-lg pointer-events-auto">
+        {/* In-Game Vision & Scale Controls + Collision Debug Toggle (Floating Top-Right) */}
+        <div className="absolute top-2.5 right-2.5 z-30 flex items-center gap-1 bg-[#111612]/90 border border-zinc-700/80 rounded-full px-2 py-1 text-xs backdrop-blur-md shadow-lg pointer-events-auto">
           <button
             type="button"
             onClick={handleCenterHero}
-            className="p-1 rounded-full text-zinc-400 hover:text-amber-200 hover:bg-zinc-800 transition-colors"
+            className="p-1 rounded-full text-zinc-400 hover:text-amber-200 hover:bg-zinc-800 transition-colors cursor-pointer"
             title="Centralizar Câmera no Herói"
           >
             <RotateCcw size={13} />
@@ -301,7 +362,7 @@ export function TacticalMap({
           <button
             type="button"
             onClick={() => setZoomScale((z) => Math.max(1.0, Number((z - 0.1).toFixed(2))))}
-            className="p-1 rounded-full text-zinc-400 hover:text-amber-200 hover:bg-zinc-800 transition-colors"
+            className="p-1 rounded-full text-zinc-400 hover:text-amber-200 hover:bg-zinc-800 transition-colors cursor-pointer"
             title="Diminuir Zoom (-)"
           >
             <ZoomOut size={13} />
@@ -310,7 +371,7 @@ export function TacticalMap({
           <button
             type="button"
             onClick={() => setZoomScale((z) => Math.min(2.2, Number((z + 0.1).toFixed(2))))}
-            className="p-1 rounded-full text-zinc-400 hover:text-amber-200 hover:bg-zinc-800 transition-colors"
+            className="p-1 rounded-full text-zinc-400 hover:text-amber-200 hover:bg-zinc-800 transition-colors cursor-pointer"
             title="Aumentar Zoom (+)"
           >
             <ZoomIn size={13} />
@@ -319,7 +380,7 @@ export function TacticalMap({
           <button
             type="button"
             onClick={() => setFogOfWar(!fogOfWar)}
-            className={`flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-bold transition-all ${
+            className={`flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-bold transition-all cursor-pointer ${
               fogOfWar
                 ? 'border-amber-500/60 bg-amber-950/50 text-amber-300 shadow-sm'
                 : 'border-zinc-700 bg-zinc-900 text-zinc-400'
@@ -329,12 +390,24 @@ export function TacticalMap({
             {fogOfWar ? <Eye size={11} className="text-amber-400" /> : <EyeOff size={11} className="text-zinc-400" />}
             <span className="hidden sm:inline">Névoa</span>
           </button>
-          <span className="text-[10px] text-zinc-400 font-mono hidden sm:inline px-1">1q=1,5m</span>
+          <button
+            type="button"
+            onClick={() => setDebugCollisions(!debugCollisions)}
+            className={`flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-bold transition-all cursor-pointer ${
+              debugCollisions
+                ? 'border-emerald-500/80 bg-emerald-950/70 text-emerald-300 shadow-sm ring-1 ring-emerald-500/50'
+                : 'border-zinc-700 bg-zinc-900 text-zinc-400 hover:text-zinc-200'
+            }`}
+            title="Alternar Modo Debug de Colisões (Polígonos 2D de Obstáculos)"
+          >
+            <Shield size={11} className={debugCollisions ? 'text-emerald-400' : 'text-zinc-400'} />
+            <span className="hidden sm:inline">Colisão</span>
+          </button>
         </div>
 
         {/* In-Game Targeting Bar (Floating Top-Center) */}
         {targetingAction && (
-          <div className="absolute top-2.5 left-1/2 -translate-x-1/2 z-30 bg-gradient-to-r from-red-950 via-amber-950 to-red-950 border border-amber-400/90 rounded-full px-3.5 py-1 flex items-center gap-3 animate-fade-in shadow-[0_0_20px_rgba(239,68,68,0.5)] backdrop-blur-md pointer-events-auto">
+          <div className="absolute top-2.5 left-1/2 -translate-x-1/2 z-35 bg-gradient-to-r from-red-950 via-amber-950 to-red-950 border border-amber-400/90 rounded-full px-3.5 py-1 flex items-center gap-3 animate-fade-in shadow-[0_0_20px_rgba(239,68,68,0.5)] backdrop-blur-md pointer-events-auto">
             <div className="flex items-center gap-1.5 text-xs font-bold text-amber-200">
               <Crosshair size={13} className="text-red-400 animate-spin-slow" />
               <span className="tracking-wide">ALVO: {targetingAction.name}</span>
@@ -344,7 +417,7 @@ export function TacticalMap({
             </div>
             <button
               onClick={onCancelTargeting}
-              className="flex items-center gap-1 bg-black/70 hover:bg-black text-zinc-300 hover:text-white px-2 py-0.5 rounded-full text-[11px] border border-zinc-700 transition-colors"
+              className="flex items-center gap-1 bg-black/70 hover:bg-black text-zinc-300 hover:text-white px-2 py-0.5 rounded-full text-[11px] border border-zinc-700 transition-colors cursor-pointer"
             >
               <X size={11} />
               <span>Cancelar</span>
@@ -352,124 +425,261 @@ export function TacticalMap({
           </div>
         )}
 
-        {/* In-Game Coordinates & Distance Badge (Floating Bottom-Left) */}
+        {/* In-Game Coordinates, Path Distance & Movement Budget Badge (Floating Bottom-Left) */}
         {hoveredSquare && (
-          <div className="absolute bottom-2.5 left-2.5 z-20 bg-zinc-950/85 border border-zinc-800 rounded-lg px-2 py-0.5 text-[10px] font-mono text-zinc-400 backdrop-blur-md pointer-events-none shadow">
-            X:{hoveredSquare.x} Y:{hoveredSquare.y}
-            {moveDistance && (
-              <span className={moveDistance.isValid ? 'text-cyan-400 ml-1.5 font-bold' : 'text-red-400 ml-1.5'}>
-                • {moveDistance.meters}m ({moveDistance.steps}q)
+          <div className="absolute bottom-2.5 left-2.5 z-30 bg-zinc-950/90 border border-zinc-700/80 rounded-xl px-3 py-1 text-xs font-mono text-zinc-300 backdrop-blur-md pointer-events-none shadow-xl flex items-center gap-2">
+            <span className="text-zinc-400 font-bold">X:{hoveredSquare.x} Y:{hoveredSquare.y}</span>
+            {activePath.length > 1 ? (
+              <span className={isPathAffordable ? 'text-emerald-400 font-bold' : 'text-red-400 font-bold'}>
+                • Rota: {pathMeters}m ({pathStepCount}q)
+                {isCombat && ` • ${moveBudget.remainingMeters}m restantes`}
               </span>
-            )}
+            ) : !isGridTileWalkable(currentBiome, hoveredSquare.x, hoveredSquare.y, gridSize) ? (
+              <span className="text-red-400 font-semibold">• Obstáculo / Intransponível</span>
+            ) : null}
           </div>
         )}
 
-        {/* Dynamic Grid Container — Edge-to-Edge Full Screen Game Board (No Card Frames or Black Void) */}
+        {/* ═══ IMPACTFUL CINEMATIC EXPLORATION -> COMBAT TRANSITION BANNER ═══ */}
+        {combatTransition && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none combat-intro-anim select-none">
+            <div className="absolute inset-0 bg-red-950/25 border-4 border-red-600/70 shadow-[inset_0_0_100px_rgba(239,68,68,0.6)]" />
+            <div className="relative flex flex-col items-center gap-2 px-8 py-4 rounded-3xl bg-[#120808]/95 border-2 border-amber-500/90 shadow-[0_0_60px_rgba(239,68,68,0.8)] backdrop-blur-xl">
+              <div className="flex items-center gap-3 text-red-300 font-serif font-black text-lg sm:text-xl tracking-widest uppercase">
+                <Swords size={24} className="text-amber-400 animate-bounce" />
+                <span>COMBATE INICIADO!</span>
+                <Swords size={24} className="text-amber-400 animate-bounce" />
+              </div>
+              <span className="text-xs text-amber-200 font-mono tracking-wide">
+                Ordem de Iniciativa 5e Ativa • 1 Ação e Deslocamento por turno
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Dynamic Grid Container — Edge-to-Edge Full Screen Game Board */}
         <div className="absolute inset-0 w-full h-full overflow-hidden pointer-events-none" data-board-bg="true">
           <div
             style={{
-              display: 'grid',
-              gridTemplateColumns: `repeat(${gridSize}, minmax(0, 1fr))`,
-              gridTemplateRows: `repeat(${gridSize}, minmax(0, 1fr))`,
               transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoomScale})`,
               transformOrigin: 'center center',
               transition: isDragging ? 'none' : 'transform 0.15s cubic-bezier(0.16, 1, 0.3, 1)'
             }}
-            className="w-full h-full gap-0.5 sm:gap-1 bg-transparent touch-manipulation pointer-events-auto"
+            className="relative w-full h-full aspect-square max-w-full max-h-full mx-auto touch-manipulation pointer-events-auto select-none rounded-2xl overflow-hidden shadow-2xl border border-stone-800/80"
           >
-          {Array.from({ length: gridSize * gridSize }).map((_, i) => {
-            const x = i % gridSize;
-            const y = Math.floor(i / gridSize);
+            {/* 1. Base Illustrated Map Artwork */}
+            <img
+              src={collisionProfile.imageSrc}
+              alt="Mapa Ilustrado"
+              className="absolute inset-0 w-full h-full object-cover select-none pointer-events-none z-0"
+            />
 
-            const illuminated = isIlluminated(x, y);
-            const inRange = isInRange(x, y);
-            const isHovered = hoveredSquare?.x === x && hoveredSquare?.y === y;
+            {/* 2. Ambient Lighting & Atmospheric Fantasy Vignette */}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-transparent to-black/35 pointer-events-none z-[1]" />
 
-            const isVillage = battlemap?.biome === 'village' || locationName.toLowerCase().includes('vila');
-            const tileNpcs = isVillage ? (npcs || []).filter((n) => n.x === x && n.y === y) : [];
-            const tileHeroes = characters.filter((c) => c.x === x && c.y === y);
-            const tileEnemies = enemies.filter((e) => e.x === x && e.y === y && e.hp > 0);
-            const hasEntities = tileHeroes.length > 0 || tileEnemies.length > 0 || tileNpcs.length > 0;
+            {/* 3. SVG Layer for Pathfinding Polyline, Waypoints & Collision Debug Polygons */}
+            <svg
+              viewBox="0 0 100 100"
+              className="absolute inset-0 w-full h-full pointer-events-none z-20"
+              style={{ overflow: 'visible' }}
+            >
+              {/* Collision Debug Polygons (When Debug Mode is Enabled) */}
+              {debugCollisions && (
+                <g opacity="0.85">
+                  {collisionProfile.obstacles.map((obs) => {
+                    const pointsStr = obs.points.map(([px, py]) => `${px * 100},${py * 100}`).join(' ');
+                    const firstPoint = obs.points[0];
+                    return (
+                      <g key={obs.id}>
+                        <polygon
+                          points={pointsStr}
+                          fill={obs.type === 'water' ? 'rgba(14, 165, 233, 0.35)' : 'rgba(239, 68, 68, 0.35)'}
+                          stroke={obs.type === 'water' ? '#0ea5e9' : '#ef4444'}
+                          strokeWidth="0.8"
+                          strokeDasharray="2 1"
+                        />
+                        <text
+                          x={firstPoint[0] * 100 + 1}
+                          y={firstPoint[1] * 100 + 4}
+                          fill="#fca5a5"
+                          fontSize="2.5"
+                          fontWeight="bold"
+                          fontFamily="sans-serif"
+                        >
+                          {obs.name}
+                        </text>
+                      </g>
+                    );
+                  })}
+                  {collisionProfile.walkableBridges?.map((bridge) => {
+                    const pointsStr = bridge.points.map(([px, py]) => `${px * 100},${py * 100}`).join(' ');
+                    const firstPoint = bridge.points[0];
+                    return (
+                      <g key={bridge.id}>
+                        <polygon
+                          points={pointsStr}
+                          fill="rgba(16, 185, 129, 0.45)"
+                          stroke="#10b981"
+                          strokeWidth="0.8"
+                        />
+                        <text
+                          x={firstPoint[0] * 100 + 1}
+                          y={firstPoint[1] * 100 + 4}
+                          fill="#6ee7b7"
+                          fontSize="2.5"
+                          fontWeight="bold"
+                          fontFamily="sans-serif"
+                        >
+                          {bridge.name} (Passagem)
+                        </text>
+                      </g>
+                    );
+                  })}
+                </g>
+              )}
 
-            const isTileActiveHero = isCombat && tileHeroes.some((h) => h.id === activeTurnId);
-            const isTileActiveEnemy = isCombat && tileEnemies.some((e) => e.id === activeTurnId);
+              {/* Dynamic A* Route Preview Line */}
+              {activePath.length > 1 && (
+                <g>
+                  {/* Glow under-path */}
+                  <polyline
+                    points={activePath.map((p) => `${((p.x + 0.5) / gridSize) * 100},${((p.y + 0.5) / gridSize) * 100}`).join(' ')}
+                    fill="none"
+                    stroke={isPathAffordable ? 'rgba(245, 158, 11, 0.4)' : 'rgba(239, 68, 68, 0.4)'}
+                    strokeWidth="2.2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  {/* Main dashed animated path line */}
+                  <polyline
+                    points={activePath.map((p) => `${((p.x + 0.5) / gridSize) * 100},${((p.y + 0.5) / gridSize) * 100}`).join(' ')}
+                    fill="none"
+                    stroke={isPathAffordable ? '#f59e0b' : '#ef4444'}
+                    strokeWidth="1.1"
+                    strokeDasharray="2 1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="route-dash-anim"
+                  />
+                  {/* Waypoint markers */}
+                  {activePath.map((p, idx) => {
+                    if (idx === 0) return null; // Don't draw on hero
+                    const isEnd = idx === activePath.length - 1;
+                    const cx = ((p.x + 0.5) / gridSize) * 100;
+                    const cy = ((p.y + 0.5) / gridSize) * 100;
+                    return (
+                      <circle
+                        key={`${p.x}-${p.y}`}
+                        cx={cx}
+                        cy={cy}
+                        r={isEnd ? 1.4 : 0.8}
+                        fill={isPathAffordable ? '#fbbf24' : '#f87171'}
+                        stroke="#000"
+                        strokeWidth="0.3"
+                      />
+                    );
+                  })}
+                </g>
+              )}
+            </svg>
 
-            const tile = getTileInfo(x, y);
-            const tType = tile.type;
-            const isDungeonBiome = battlemap?.biome === 'dungeon' || locationName.toLowerCase().includes('dungeon') || locationName.toLowerCase().includes('catacumba') || locationName.toLowerCase().includes('abóboda');
-            const isCenterCampfire = x === Math.floor(gridSize / 2) && y === Math.floor(gridSize / 2);
+            {/* 4. Interactive Tactical Grid Layout */}
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: `repeat(${gridSize}, minmax(0, 1fr))`,
+                gridTemplateRows: `repeat(${gridSize}, minmax(0, 1fr))`
+              }}
+              className="absolute inset-0 w-full h-full z-10"
+            >
+            {Array.from({ length: gridSize * gridSize }).map((_, i) => {
+              const x = i % gridSize;
+              const y = Math.floor(i / gridSize);
 
-            // Determine styling based on organic biome tile
-            let tileBg = isDungeonBiome
-              ? 'bg-[#151c16] border-[#253024]/80 hover:bg-[#1c261d]' // dark moss stone dungeon floor
-              : 'bg-[#152217] border-[#1d3020]/70 hover:bg-[#1a2c1d]'; // grass default
-            if (tType === 'road') {
-              tileBg = 'bg-[#4a3b2c] border-[#5e4b38] hover:bg-[#574534]'; // dirt road
-            } else if (tType === 'water') {
-              tileBg = 'bg-gradient-to-br from-[#122e2b] to-[#1a3d34] border-[#255246] shadow-inner';
-            } else if (tType === 'bridge') {
-              tileBg = 'bg-[#5c381e] border-[#784724] shadow-sm';
-            } else if (tType === 'tree') {
-              tileBg = 'bg-[#143d1a] border-[#1e5c27] shadow-inner';
-            } else if (tType === 'building_wall' || tType === 'wall') {
-              tileBg = isDungeonBiome ? 'bg-[#1b221c] border-[#2e392c] shadow-md pointer-events-none' : 'bg-[#27272a] border-[#3f3f46] shadow-md pointer-events-none';
-            } else if (tType === 'building_floor' || tType === 'floor') {
-              tileBg = isDungeonBiome ? 'bg-[#131914] border-[#232d24] hover:bg-[#182019]' : 'bg-[#332218] border-[#442e20] hover:bg-[#3d291d]';
-            } else if (tType === 'door') {
-              tileBg = 'bg-[#61361c] border-amber-600/70';
-            } else if (tType === 'well') {
-              tileBg = 'bg-stone-800 border-stone-600';
-            }
+              const illuminated = isIlluminated(x, y);
+              const inRange = isInRange(x, y);
+              const isHovered = hoveredSquare?.x === x && hoveredSquare?.y === y;
 
-            const isAoE =
-              targetingAction?.aoeRadius &&
-              hoveredSquare &&
-              Math.max(Math.abs(hoveredSquare.x - x), Math.abs(hoveredSquare.y - y)) <=
-                targetingAction.aoeRadius;
+              const isVillage = battlemap?.biome === 'village' || locationName.toLowerCase().includes('vila');
+              const tileNpcs = isVillage ? (npcs || []).filter((n) => n.x === x && n.y === y) : [];
+              const tileHeroes = characters.filter((c) => c.x === x && c.y === y);
+              const tileEnemies = enemies.filter((e) => e.x === x && e.y === y && e.hp > 0);
+              const hasEntities = tileHeroes.length > 0 || tileEnemies.length > 0 || tileNpcs.length > 0;
 
-            return (
-              <div
-                key={i}
-                onMouseEnter={() => setHoveredSquare({ x, y })}
-                onMouseLeave={() => setHoveredSquare(null)}
-                onClick={() => {
-                  if (targetingAction) {
-                    const enemyTarget = tileEnemies[0];
-                    if (enemyTarget && inRange) {
-                      onTargetEnemy(enemyTarget.id);
+              const isTileActiveHero = isCombat && tileHeroes.some((h) => h.id === activeTurnId);
+              const isTileActiveEnemy = isCombat && tileEnemies.some((e) => e.id === activeTurnId);
+
+              const tile = getTileInfo(x, y);
+              const tType = tile.type;
+              const isCenterCampfire = x === Math.floor(gridSize / 2) && y === Math.floor(gridSize / 2);
+
+              const isWalkable = isGridTileWalkable(currentBiome, x, y, gridSize);
+              const isOnActivePath = activePath.some((p) => p.x === x && p.y === y);
+
+              // Translucent tactical cell styling over the illustrated map
+              let tileBg = 'bg-transparent border-stone-700/20 hover:bg-amber-400/10 hover:border-amber-400/50';
+              if (!isWalkable) {
+                tileBg = 'bg-black/20 border-black/30';
+              }
+              if (isOnActivePath) {
+                tileBg = isPathAffordable
+                  ? 'bg-amber-500/15 border-amber-400/40'
+                  : 'bg-red-500/15 border-red-500/40';
+              }
+
+              const isAoE =
+                targetingAction?.aoeRadius &&
+                hoveredSquare &&
+                Math.max(Math.abs(hoveredSquare.x - x), Math.abs(hoveredSquare.y - y)) <=
+                  targetingAction.aoeRadius;
+
+              return (
+                <div
+                  key={i}
+                  onMouseEnter={() => setHoveredSquare({ x, y })}
+                  onMouseLeave={() => setHoveredSquare(null)}
+                  onClick={() => {
+                    if (targetingAction) {
+                      const enemyTarget = tileEnemies[0];
+                      if (enemyTarget && inRange) {
+                        onTargetEnemy(enemyTarget.id);
+                      }
+                    } else if (tileNpcs.length > 0) {
+                      const npc = tileNpcs[0];
+                      const dist = activeHero ? Math.max(Math.abs(activeHero.x - x), Math.abs(activeHero.y - y)) : 99;
+                      if (dist <= 1) {
+                        onTalkNpc?.(npc.id);
+                      } else if (canMove && activeHero && isWalkable) {
+                        onMoveHero(activeHero.id, x, y);
+                      }
+                    } else if (tileEnemies.length > 0) {
+                      setContextEnemy(tileEnemies[0]);
+                      onSelectToken('enemy', tileEnemies[0].id);
+                    } else if (['chest', 'shrine', 'stairs', 'well'].includes(tType)) {
+                      onInteractObject?.(tType, x, y);
+                    } else if (canMove && activeHero && !hasEntities) {
+                      if (isWalkable) {
+                        if (!isCombat || (pathStepCount > 0 && isPathAffordable)) {
+                          onMoveHero(activeHero.id, x, y);
+                        }
+                      }
                     }
-                  } else if (tileNpcs.length > 0) {
-                    const npc = tileNpcs[0];
-                    const dist = activeHero ? Math.max(Math.abs(activeHero.x - x), Math.abs(activeHero.y - y)) : 99;
-                    if (dist <= 1) {
-                      onTalkNpc?.(npc.id);
-                    } else if (canMove && activeHero && !tile.blocksMovement) {
-                      onMoveHero(activeHero.id, x, y);
-                    }
-                  } else if (tileEnemies.length > 0) {
-                    setContextEnemy(tileEnemies[0]);
-                    onSelectToken('enemy', tileEnemies[0].id);
-                  } else if (['chest', 'shrine', 'stairs', 'well'].includes(tType)) {
-                    onInteractObject?.(tType, x, y);
-                  } else if (canMove && activeHero && !hasEntities && !tile.blocksMovement) {
-                    onMoveHero(activeHero.id, x, y);
-                  }
-                }}
-                className={`relative flex items-center justify-center rounded-sm sm:rounded border transition-all cursor-pointer overflow-hidden ${
-                  !illuminated
-                    ? 'bg-black/95 border-zinc-950 opacity-25'
-                    : inRange && targetingAction
-                    ? 'bg-amber-500/20 border-amber-400/80 shadow-[inset_0_0_8px_rgba(251,191,36,0.4)]'
-                    : isAoE
-                    ? 'bg-orange-500/25 border-orange-500/60 animate-pulse'
-                    : isTileActiveHero
-                    ? 'bg-amber-950/40 border-amber-400/80 shadow-[inset_0_0_15px_rgba(251,191,36,0.35)]'
-                    : isTileActiveEnemy
-                    ? 'bg-red-950/40 border-red-500/80 shadow-[inset_0_0_15px_rgba(239,68,68,0.35)]'
-                    : tileBg
-                }`}
-              >
-                {/* Organic Visual Embellishments */}
+                  }}
+                  className={`relative flex items-center justify-center border transition-all cursor-pointer overflow-visible ${
+                    !illuminated
+                      ? 'bg-black/85 border-black opacity-40'
+                      : inRange && targetingAction
+                      ? 'bg-amber-500/20 border-amber-400/80 shadow-[inset_0_0_8px_rgba(251,191,36,0.4)]'
+                      : isAoE
+                      ? 'bg-orange-500/25 border-orange-500/60 animate-pulse'
+                      : isTileActiveHero
+                      ? 'bg-amber-500/15 border-amber-400/70 shadow-[inset_0_0_12px_rgba(251,191,36,0.3)]'
+                      : isTileActiveEnemy
+                      ? 'bg-red-500/15 border-red-500/70 shadow-[inset_0_0_12px_rgba(239,68,68,0.3)]'
+                      : tileBg
+                  }`}
+                >
+                  {/* Organic Visual Embellishments */}
                 {illuminated && (
                   <>
                     {/* Water flow line */}
@@ -548,10 +758,10 @@ export function TacticalMap({
                 )}
 
                 {/* Movement distance preview tooltip */}
-                {isHovered && moveDistance && !hasEntities && !tile.blocksMovement && illuminated && (
+                {isHovered && activePath.length > 1 && !hasEntities && illuminated && (
                   <div className="absolute -top-6 z-30 pointer-events-none bg-black/95 border border-zinc-700 px-1.5 py-0.5 rounded text-[9px] font-mono text-zinc-200 whitespace-nowrap shadow-md">
-                    <span className={moveDistance.isValid ? 'text-emerald-400' : 'text-red-400'}>
-                      {moveDistance.meters}m
+                    <span className={isPathAffordable ? 'text-emerald-400' : 'text-red-400'}>
+                      {pathMeters}m ({pathStepCount}q)
                     </span>
                   </div>
                 )}
@@ -898,6 +1108,7 @@ export function TacticalMap({
               </div>
             );
           })}
+          </div>
 
           {/* FLYING COMBAT PROJECTILES OVERLAY */}
           {projectiles && projectiles.map((p) => {

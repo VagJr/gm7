@@ -1319,6 +1319,8 @@ export default function Game() {
                     npcs={state?.npcs || []}
                     onTalkNpc={handleTalkNpc}
                     projectiles={activeProjectiles}
+                    biome={battlemapBiome}
+                    movementUsed={state?.movementUsed || 0}
                   />
                 </div>
 
@@ -1672,14 +1674,17 @@ export default function Game() {
                 {showLevelUp && (levelUpHero || active) && (
                   <LevelUpModal
                     hero={levelUpHero || active!}
+                    isOpen={showLevelUp}
                     onClose={() => {
                       setShowLevelUp(false);
                       setLevelUpHero(null);
                     }}
-                    onLevelUp={(targetHero, statIncreases) => {
+                    onConfirmLevelUp={(statIncreases: number[]) => {
+                      const target = levelUpHero || active;
+                      if (!target) return;
                       void action({
                         action: 'levelup',
-                        character: targetHero.id,
+                        character: target.id,
                         statIncreases
                       });
                       setShowLevelUp(false);
