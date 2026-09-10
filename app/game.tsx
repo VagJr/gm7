@@ -1,0 +1,2138 @@
+'use client';
+
+import React, { useEffect, useState, useCallback, useTransition } from 'react';
+import {
+  Swords,
+  BookOpen,
+  Users,
+  Map as MapIcon,
+  Dices,
+  Settings,
+  Flame,
+  ChevronRight,
+  Plus,
+  Send,
+  Shield,
+  Heart,
+  Footprints,
+  ScrollText,
+  Search,
+  RefreshCw,
+  Moon,
+  ArrowUpRight,
+  Skull,
+  Package,
+  Sparkles,
+  MessageSquare,
+  Compass,
+  X,
+  Menu,
+  Trash2,
+  Hand,
+  Coffee,
+  Clock
+} from 'lucide-react';
+import { SidebarProvider, Sidebar, SidebarContent, SidebarMenu, SidebarMenuItem, SidebarMenuButton } from '@/components/ui/sidebar';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
+import { Progress } from '@/components/ui/progress';
+
+import {
+  abilities,
+  classes,
+  species,
+  skills,
+  conditions,
+  mod,
+  prof,
+  signed,
+  newCharacter,
+  initialState,
+  starterState,
+  locations,
+  resolveAttack,
+  calculateEquippedStats,
+  ITEMS_CATALOG,
+  SPELLS_CATALOG,
+  type Character,
+  type State,
+  type Enemy
+} from '@/lib/game-engine';
+import { GM_PROMPT } from '@/lib/gm-prompt';
+
+// New CRPG Digital Video Game Components
+import { FloatingTextOverlay, type FloatingNumber } from '@/components/game/floating-text';
+import { DiceRoller3D, type DiceRollEvent } from '@/components/game/dice-roller-3d';
+import { TopEnemyHud } from '@/components/game/top-enemy-hud';
+import { BottomPlayerHud, type ActionSelection } from '@/components/game/bottom-player-hud';
+import { TacticalMap } from '@/components/game/tactical-map';
+import { InventoryPanel } from '@/components/game/inventory-panel';
+import { NpcDialog, type NpcDialogData } from '@/components/game/npc-dialog';
+import { ExplorationBar } from '@/components/game/exploration-bar';
+import { QuestLog } from '@/components/game/quest-log';
+import { CampaignTracker } from '@/components/game/campaign-tracker';
+import { MobileDrawer } from '@/components/game/mobile-drawer';
+import { MobileActionCluster } from '@/components/game/mobile-action-cluster';
+import { CharacterCreator } from '@/components/game/character-creator';
+import { CAMPAIGN_ACTS, type CampaignAct } from '@/lib/campaign-data';
+import { generateProceduralDungeon, type ProceduralDungeon, type TileType } from '@/lib/dungeon-generator';
+import { generateRandomNpc, type GeneratedNpc } from '@/lib/npc-generator';
+import { generateBattlemap, type Battlemap, type BiomeType } from '@/lib/battlemap-biomes';
+import { PartySidebar } from '@/components/game/party-sidebar';
+import { InitiativeRibbon } from '@/components/game/initiative-ribbon';
+import { GamemasterSidebar } from '@/components/game/gamemaster-sidebar';
+
+type ApiData = {
+  error: string;
+  signedIn: boolean;
+  user: string;
+  rooms: { id: string; name: string }[];
+  room: Room;
+  id: string;
+  searchHtml: string;
+  choices?: string[];
+  attackResult?: any;
+};
+
+type Room = {
+  id: string;
+  owner: string;
+  name: string;
+  code: string;
+  version: number;
+  state: State;
+};
+
+const navigation = [
+  { icon: Swords, name: 'Aventura' },
+  { icon: Users, name: 'Personagens' },
+  { icon: BookOpen, name: 'Compêndio' },
+  { icon: MapIcon, name: 'Atlas' },
+  { icon: Settings, name: 'Mestre de jogo' }
+];
+
+function Pick({
+  value,
+  options,
+  onChange,
+  label
+}: {
+  value: string;
+  options: string[];
+  onChange: (v: string) => void;
+  label?: string;
+}) {
+  return (
+    <label className="field">
+      {label}
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((x) => (
+            <SelectItem key={x} value={x}>
+              {x}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </label>
+  );
+}
+
+function createInitialRoom(): Room {
+  const st = initialState();
+  return {
+    id: 'local-room-1',
+    owner: 'local-hero',
+    name: 'Vila do Rio Verde',
+    code: 'rio-verde-01',
+    version: 1,
+    state: st
+  };
+}
+
+export default function Game() {
+  const [view, setView] = useState('Aventura');
+  const [room, setRoom] = useState<Room | null>(() => createInitialRoom());
+  const [rooms, setRooms] = useState<{ id: string; name: string }[]>([
+    { id: 'local-room-1', name: 'Vila do Rio Verde' }
+  ]);
+  const [user, setUser] = useState('local-hero');
+  const [signedIn, setSignedIn] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [selected, setSelected] = useState('');
+  const [selectedEnemyId, setSelectedEnemyId] = useState('');
+  const [character, setCharacter] = useState<Character | null>(null);
+  const [roomDialog, setRoomDialog] = useState(false);
+  const [joinCode, setJoinCode] = useState('');
+  const [roomName, setRoomName] = useState('Vila do Rio Verde');
+  const [formula, setFormula] = useState('1d20');
+  const [mode, setMode] = useState('normal');
+  const [message, setMessage] = useState('');
+  const [key, setKey] = useState('');
+  const [search, setSearch] = useState(true);
+  const [searchHtml, setSearchHtml] = useState('');
+  const [notes, setNotes] = useState('');
+  const [npcName, setNpcName] = useState('');
+  const [npcRole, setNpcRole] = useState('');
+  const [npcDesc, setNpcDesc] = useState('');
+
+  // Digital Video Game States
+  const [floatingTexts, setFloatingTexts] = useState<FloatingNumber[]>([]);
+  const [currentDiceRoll, setCurrentDiceRoll] = useState<DiceRollEvent | null>(null);
+  const [targetingAction, setTargetingAction] = useState<ActionSelection | null>(null);
+  const [showInventory, setShowInventory] = useState(false);
+  const [showQuests, setShowQuests] = useState(false);
+  const [activeNpcDialog, setActiveNpcDialog] = useState<NpcDialogData | null>(null);
+  const [aiChoices, setAiChoices] = useState<string[]>([
+    'Examinar os degraus e a névoa da abadia',
+    'Tocar no sino de bronze rúnico',
+    'Conversar com Mira, a eremita'
+  ]);
+  const [isJournalOpen, setIsJournalOpen] = useState(false);
+
+  // New CRPG Campaign, Procedural Dungeon & Mobile States
+  const [mobileTab, setMobileTab] = useState<'party' | 'map' | 'gm'>('map');
+  const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
+  const [showCharacterCreator, setShowCharacterCreator] = useState(false);
+  const [showPartySidebar, setShowPartySidebar] = useState(true);
+  const [showGmSidebar, setShowGmSidebar] = useState(false);
+  const [showNarrativeBox, setShowNarrativeBox] = useState(true);
+  const [currentAct, setCurrentAct] = useState<1 | 2 | 3>(1);
+  const [dungeonSize, setDungeonSize] = useState<8 | 12 | 16>(12);
+  const [dungeonSeed, setDungeonSeed] = useState<number>(() => Date.now());
+  const [proceduralDungeon, setProceduralDungeon] = useState<ProceduralDungeon>(() =>
+    generateProceduralDungeon(1, 12, 12345)
+  );
+  const [battlemapBiome, setBattlemapBiome] = useState<BiomeType>('village');
+  const [battlemapSeed, setBattlemapSeed] = useState<number>(() => Date.now());
+  const [organicBattlemap, setOrganicBattlemap] = useState<Battlemap>(() =>
+    generateBattlemap('village', 12, 12345)
+  );
+
+  // Sync battlemap with biome and size
+  useEffect(() => {
+    setOrganicBattlemap(
+      generateBattlemap(battlemapBiome, dungeonSize as 8 | 12 | 16, battlemapSeed)
+    );
+  }, [battlemapBiome, dungeonSize, battlemapSeed]);
+
+  // Sync biome from server room state
+  useEffect(() => {
+    if (room?.state?.biome && room.state.biome !== battlemapBiome) {
+      setBattlemapBiome(room.state.biome);
+    }
+  }, [room?.state?.biome, battlemapBiome]);
+
+  // Reference to prevent stale closures during async operations
+  const roomRef = React.useRef(room);
+  useEffect(() => {
+    roomRef.current = room;
+  }, [room]);
+
+  // Data Loading
+  const load = useCallback(async (id?: string) => {
+    try {
+      const r = await fetch('/api/game' + (id ? '?room=' + encodeURIComponent(id) : ''));
+      const d = (await r.json()) as ApiData;
+      if (!r.ok) throw Error(d.error);
+      if (!d.signedIn) {
+        if (typeof window !== 'undefined') {
+          window.location.href = '/signin-with-chatgpt?return_to=' + encodeURIComponent(window.location.pathname);
+        }
+        return;
+      }
+      setSignedIn(d.signedIn);
+      setUser(d.user || 'local-hero');
+      if (d.rooms && d.rooms.length > 0) setRooms(d.rooms);
+      if (d.room) {
+        setRoom(d.room);
+        roomRef.current = d.room;
+        const heroes = d.room.state.characters || [];
+        setSelected((p) =>
+          heroes.some((c: Character) => c.id === p)
+            ? p
+            : heroes[0]?.id || ''
+        );
+        setSelectedEnemyId((e) =>
+          d.room.state.enemies.some((en: Enemy) => en.id === e)
+            ? e
+            : d.room.state.enemies[0]?.id || ''
+        );
+        if (heroes.length === 0) {
+          setShowCharacterCreator(true);
+        }
+      }
+      return d;
+    } catch (e) {
+      console.warn('Sync notice:', e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  // Handle wipe URL parameter detection
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      if (url.searchParams.get('wiped') === '1') {
+        setShowCharacterCreator(true);
+        url.searchParams.delete('wiped');
+        window.history.replaceState({}, '', url.pathname + (url.search ? url.search : ''));
+      }
+    }
+  }, []);
+
+  // Polling for multiplayer updates
+  useEffect(() => {
+    if (!room) return;
+    const timer = setInterval(() => {
+      if (!busy) void load(room.id);
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [room?.id, busy, load]);
+
+  // General server action dispatch
+  async function action(a: Record<string, unknown>) {
+    if (busy) return null;
+    setBusy(true);
+    setError('');
+    try {
+      const curRoom = roomRef.current;
+      const r = await fetch('/api/game', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ room: curRoom?.id, version: curRoom?.version, ...a })
+      });
+      const d = (await r.json()) as ApiData;
+      if (!r.ok) {
+        if (r.status === 409) await load(curRoom?.id);
+        throw Error(d.error);
+      }
+      if (d.room) {
+        setRoom(d.room);
+        roomRef.current = d.room;
+      } else {
+        await load(d.id || curRoom?.id);
+      }
+      return d;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Não foi possível salvar.');
+      return null;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Groq AI Narration trigger
+  async function narrate(customText?: string, actionCtx?: string) {
+    const textToSend = (customText || message).trim();
+    if (!textToSend && !actionCtx) return;
+    setBusy(true);
+    setError('');
+    try {
+      const curRoom = roomRef.current;
+      const r = await fetch('/api/gm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          room: curRoom?.id,
+          version: curRoom?.version,
+          key,
+          text: textToSend,
+          actionContext: actionCtx,
+          search
+        })
+      });
+      const d = (await r.json()) as ApiData;
+      if (!r.ok) throw Error(d.error);
+      setSearchHtml(d.searchHtml || '');
+      if (d.choices && d.choices.length > 0) {
+        setAiChoices(d.choices);
+      }
+      if (!customText) setMessage('');
+      await load(curRoom?.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'A GM não respondeu.');
+      await load(roomRef.current?.id);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const state = room?.state;
+  const owner = room?.owner === user;
+  const active = state?.characters.find((c) => c.id === selected) || state?.characters[0];
+  const location = (locations && locations[state?.location || 0]) || locations[0];
+  const canEdit = active && (owner || active.owner === user);
+  const turnId = state?.order[state.turn];
+  const turnEntity = [...(state?.characters || []), ...(state?.enemies || [])].find((c) => c.id === turnId);
+  const isHeroTurn = active && turnId === active.id;
+  const isActBossDefeated = state?.enemies ? state.enemies.length > 0 && state.enemies.every((e) => e.hp <= 0) : false;
+  const currentEnemy = state?.enemies?.find((e) => e.id === selectedEnemyId) || state?.enemies?.[0] || null;
+  const latestGmLog = state?.logs ? [...state.logs].reverse().find((l) => l.kind === 'gm') : null;
+
+  // Memoized 3D dice dismissal to prevent infinite re-roll loops
+  const handleDiceComplete = useCallback(() => {
+    setCurrentDiceRoll(null);
+  }, []);
+
+  // Complete Cache & Account Wipe Handler
+  const handleWipeAllData = async () => {
+    if (typeof window !== 'undefined') {
+      const confirmed = window.confirm(
+        'Tem certeza que deseja apagar os saves antigos, limpar o cache e iniciar uma nova campanha na Vila do Rio Verde?'
+      );
+      if (!confirmed) return;
+      try {
+        localStorage.clear();
+        sessionStorage.clear();
+      } catch {}
+      window.location.href = '/api/wipe';
+    }
+  };
+
+  // EXECUTE COMBAT ATTACK FLOW - SERVER AUTHORITATIVE RESOLUTION (NO CLIENT HP DESYNC)
+  const handleExecuteAttack = async (targetId: string) => {
+    if (busy || !active || !state) return;
+    const target = state.enemies.find((e) => e.id === targetId && e.hp > 0);
+    if (!target) return;
+
+    const dmgFormula = targetingAction?.damageFormula || active.damage;
+    setTargetingAction(null);
+
+    // Call server action (authoritative SRD roll + enemy AI counter-attack)
+    const res = await action({
+      action: 'attack',
+      character: active.id,
+      target: target.id,
+      damageFormula: dmgFormula,
+      mode
+    });
+
+    if (res && res.attackResult) {
+      const r = res.attackResult;
+
+      // 1. Trigger Fast Visual 3D Dice Roll matching the EXACT roll from server!
+      setCurrentDiceRoll({
+        id: crypto.randomUUID(),
+        raw: r.d20Roll,
+        modifier: active.attack - 2 * active.exhaustion,
+        total: r.totalAttack,
+        targetAc: r.targetAc,
+        hit: r.hit,
+        isCrit: r.isCrit,
+        isFumble: r.isFumble,
+        label: targetingAction?.name || `Ataque com ${active.weapon}`
+      });
+
+      // 2. Floating Combat Text at exact target token position
+      const posX = ((target.x + 0.5) / dungeonSize) * 100;
+      const posY = ((target.y + 0.5) / dungeonSize) * 100;
+
+      const newFloat: FloatingNumber = {
+        id: crypto.randomUUID(),
+        x: posX,
+        y: posY,
+        text: r.hit ? (r.isCrit ? `CRÍTICO! -${r.damage}` : `-${r.damage}`) : 'ERROU!',
+        type: r.isCrit ? 'crit' : r.hit ? 'damage' : 'miss'
+      };
+
+      setFloatingTexts((prev) => [...prev, newFloat]);
+      setTimeout(() => {
+        setFloatingTexts((prev) => prev.filter((f) => f.id !== newFloat.id));
+      }, 1600);
+
+      // 3. Groq AI narrates the cinematic story matching the server result!
+      void narrate('', `Resultado mecânico: ${r.text}`);
+    }
+  };
+
+  // HANDLE ADVANCE ACT
+  const handleAdvanceAct = async () => {
+    const next = (currentAct === 1 ? 2 : currentAct === 2 ? 3 : 1) as 1 | 2 | 3;
+    setCurrentAct(next);
+    const newSeed = Date.now();
+    setDungeonSeed(newSeed);
+    setProceduralDungeon(generateProceduralDungeon(next, dungeonSize, newSeed));
+    const ok = await action({ action: 'advanceAct', act: next });
+    if (ok) {
+      void narrate(
+        '',
+        `O grupo desce às profundezas e alcança o ${CAMPAIGN_ACTS[next].title}: ${CAMPAIGN_ACTS[next].subtitle}. ${CAMPAIGN_ACTS[next].dialogueIntro}`
+      );
+    }
+  };
+
+  // HANDLE DRINK / USE CONSUMABLE (Healing Potions, etc.)
+  const handleUseItem = async (itemId: string, targetId?: string) => {
+    if (!active) return;
+    const target = targetId ? (state?.characters.find((c) => c.id === targetId) || active) : active;
+    const res = await action({
+      action: 'useItem',
+      character: active.id,
+      itemId,
+      targetId: target.id
+    });
+
+    if (res && (res as any).healResult) {
+      const hr = (res as any).healResult;
+      const posX = ((target.x + 0.5) / dungeonSize) * 100;
+      const posY = ((target.y + 0.5) / dungeonSize) * 100;
+      const newFloat: FloatingNumber = {
+        id: crypto.randomUUID(),
+        x: posX,
+        y: posY,
+        text: `+${hr.healAmount} PV`,
+        type: 'heal'
+      };
+      setFloatingTexts((prev) => [...prev, newFloat]);
+      setTimeout(() => {
+        setFloatingTexts((prev) => prev.filter((f) => f.id !== newFloat.id));
+      }, 1600);
+
+      void narrate('', `${active.name} consumiu ${itemId.includes('maior') ? 'Poção de Cura Maior' : 'Poção de Cura'} em ${target.name}, restaurando ${hr.healAmount} PV!`);
+    }
+  };
+
+  // HANDLE INTERACTION & EXPLORATION
+  const handleInvestigate = () => {
+    if (!active) return;
+    void action({
+      action: 'check',
+      character: active.id,
+      ability: 3,
+      skill: 'Investigação',
+      label: 'Investigar os arredores',
+      mode: 'normal'
+    }).then((res) => {
+      if (res) {
+        void narrate('', `${active.name} investiga meticulosamente a área em busca de segredos, armadilhas e pistas.`);
+      }
+    });
+  };
+
+  const handleInteract = () => {
+    if (!active) return;
+    void narrate(
+      '',
+      `${active.name} examina as construções de pedra, a ponte de madeira rústica e as águas do riacho de Vila do Rio Verde.`
+    );
+  };
+
+  const handleTalkNpc = (npcId?: string) => {
+    const npcs = state?.npcs || [];
+    const chosen = npcId ? npcs.find((n) => n.id === npcId) : (npcs[0] || null);
+    if (chosen) {
+      const isDoran = chosen.id === 'doran';
+      const isElenor = chosen.id === 'elenor';
+      const isKaelen = chosen.id === 'kaelen';
+
+      const options = isDoran
+        ? [
+            { label: 'Aceito a missão, Ancião Doran. O que nos aguarda na floresta?', actionText: `Pergunta ao Ancião Doran sobre o selo rompido e as criaturas de cinzas.` },
+            { label: 'Conceda a bênção de Valdoria para a nossa expedição.', actionText: `Pede a bênção da vila e conselhos de sobrevivência a Doran.` },
+            { label: 'Conversarei com Elenor e Kaelen antes de partir.', actionText: `Agradece ao Ancião e prepara-se com a guarda da vila.` }
+          ]
+        : isElenor
+        ? [
+            { label: 'Preciso beber uma Poção de Cura agora para me recompor.', actionText: `Toma um gole de elixir com Elenor e revigora seus pontos de vida.` },
+            { label: 'Como usar as poções durante o combate sob regras 5e?', actionText: `Pergunta a Elenor como administrar poções como 1 Ação de combate.` },
+            { label: 'Guardei os frascos na mochila. Muito obrigado, Elenor!', actionText: `Agradece pelas poções e guarda os frascos na mochila.` }
+          ]
+        : isKaelen
+        ? [
+            { label: 'Capitão Kaelen, soe o alarme! Iniciar combate contra invasores!', actionText: `Dá ordem para soar o alarme da vila e enfrentar a patrulha de cinzas!` },
+            { label: 'Quais são as regras de posicionamento e cobertura?', actionText: `Pede instruções militares sobre terreno e regras de 1 Ação em combate D&D 5e.` },
+            { label: 'Mantenham a guarda da ponte. Cuidaremos da floresta.', actionText: `Afirma ao Capitão que a guarda pode confiar nos aventureiros.` }
+          ]
+        : [
+            { label: 'O que você sabe sobre os arredores?', actionText: `Pergunta sobre a região a ${chosen.name}.` },
+            { label: 'Como posso ajudá-lo?', actionText: `Oferece auxílio a ${chosen.name}.` },
+            { label: 'Agradeço, continuarei explorando.', actionText: `Despede-se de ${chosen.name}.` }
+          ];
+
+      setActiveNpcDialog({
+        id: chosen.id,
+        name: chosen.name,
+        role: chosen.role,
+        dialogText: chosen.dialogue ? chosen.dialogue.join(' ') : chosen.description,
+        options
+      });
+    } else {
+      const generated = generateRandomNpc();
+      setActiveNpcDialog({
+        id: generated.id,
+        name: generated.name,
+        role: generated.role,
+        dialogText: `${generated.dialogueIntro} (${generated.description})`,
+        options: generated.options
+      });
+    }
+  };
+
+  const handleInteractObject = (type: string, x: number, y: number) => {
+    if (!active) return;
+    if (type === 'chest') {
+      void narrate('', `${active.name} abre as caixas de suprimentos nas coordenadas [${String.fromCharCode(65 + x)}${y + 1}] e encontra provisões e poções de cura!`);
+    } else if (type === 'shrine') {
+      void narrate('', `${active.name} aproxima-se do monólito sagrado, sentindo as correntes arcanas que protegem as terras de Valdoria.`);
+    } else if (type === 'well') {
+      void narrate('', `${active.name} retira água fresca do poço de pedra da vila, recompondo o fôlego.`);
+    } else if (type === 'stairs') {
+      if (isActBossDefeated) {
+        void handleAdvanceAct();
+      } else {
+        void narrate('', `${active.name} aproxima-se da escadaria, mas guardas e selos impedem a passagem enquanto a missão atual não for concluída.`);
+      }
+    }
+  };
+
+  const handleTravel = (b: BiomeType) => {
+    const locIdx = b === 'village' ? 0 : b === 'forest' ? 1 : 2;
+    setBattlemapBiome(b);
+    setBattlemapSeed(Date.now());
+    const destName = b === 'village' ? 'Vila do Rio Verde' : b === 'forest' ? 'A Floresta dos Sussurros' : 'Catacumbas dos Três Selos';
+    void action({ action: 'location', location: locIdx, biome: b }).then(() => {
+      void narrate('', `O grupo de heróis viajou para ${destName}. O ambiente ao redor se transforma.`);
+    });
+  };
+
+  return (
+    <SidebarProvider>
+      <main className="game-shell flex flex-col md:flex-row w-full h-[100dvh] max-h-[100dvh] bg-[#050814] text-[#ede9dc] select-none overflow-hidden">
+        {/* Navigation Sidebar (Desktop - Apenas exibido fora da tela de Aventura) */}
+        {view !== 'Aventura' && (
+          <Sidebar collapsible="none" className="navigation hidden md:flex shrink-0 h-full overflow-y-auto">
+            <div className="brand flex items-center gap-3">
+              <Dices size={30} className="text-amber-400" />
+              <span className="font-serif font-black tracking-wider text-amber-200">
+                CRÔNICAS<small className="block text-[10px] tracking-widest text-zinc-400">DO VAZIO</small>
+              </span>
+            </div>
+            <p className="eyebrow text-xs text-amber-500/80 font-bold tracking-widest px-3 mt-4">
+              SEU UNIVERSO
+            </p>
+            <SidebarContent>
+              <SidebarMenu>
+                {navigation.map(({ icon: Icon, name }) => (
+                  <SidebarMenuItem key={name}>
+                    <SidebarMenuButton
+                      className={view === name ? 'nav-item active' : 'nav-item'}
+                      isActive={view === name}
+                      onClick={() => setView(name)}
+                    >
+                      <Icon size={18} />
+                      <span>{name}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarContent>
+            <div className="nav-bottom mt-auto p-4 border-t border-zinc-800">
+              <span className="edition block text-center mb-2">5e • REGRAS 2024</span>
+              <button className="text-button w-full justify-center" onClick={() => setRoomDialog(true)}>
+                <Plus size={15} /> Minhas mesas
+              </button>
+            </div>
+          </Sidebar>
+        )}
+
+        {/* Mobile Header (Apenas fora de Aventura, pois Aventura tem seu próprio topo) */}
+        {view !== 'Aventura' && (
+          <div className="md:hidden flex items-center justify-between px-3 py-2 border-b border-zinc-800 bg-[#121612] sticky top-0 z-30 shadow-md shrink-0">
+          <div className="flex items-center gap-2">
+            {/* Hamburger Button to trigger MobileDrawer */}
+            <button
+              onClick={() => setIsMobileDrawerOpen(true)}
+              className="p-1.5 bg-zinc-900 hover:bg-zinc-800 text-amber-400 border border-zinc-700 rounded-xl shadow active:scale-95 transition-transform"
+              title="Menu Principal"
+              aria-label="Menu Principal"
+            >
+              <Menu size={20} />
+            </button>
+            <div className="flex flex-col">
+              <span className="font-serif font-black tracking-wider text-amber-200 text-xs leading-none">
+                CRÔNICAS <span className="text-[9px] text-zinc-400 font-mono">5e</span>
+              </span>
+              <span className="text-[10px] text-amber-400/90 font-bold truncate max-w-[125px]">
+                {CAMPAIGN_ACTS[currentAct].title.split(':')[0]}
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setIsJournalOpen(!isJournalOpen)}
+              className="px-2 py-1 bg-zinc-900 hover:bg-zinc-800 text-amber-300 border border-zinc-700 rounded-lg text-xs font-semibold flex items-center gap-1 shadow active:scale-95 transition-transform"
+            >
+              <Flame size={13} className="text-amber-400" />
+              <span>Mestre</span>
+            </button>
+            <button
+              onClick={() => setShowQuests(true)}
+              className="px-2 py-1 bg-zinc-900 hover:bg-zinc-800 text-cyan-300 border border-zinc-700 rounded-lg text-xs font-semibold flex items-center gap-1 shadow active:scale-95 transition-transform"
+            >
+              <ScrollText size={13} className="text-cyan-400" />
+              <span>Missões</span>
+            </button>
+            <button
+              onClick={() => setRoomDialog(true)}
+              className="p-1 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-700 rounded-lg text-xs shadow active:scale-95 transition-transform"
+              title="Mesas"
+            >
+              <Users size={14} />
+            </button>
+            <button
+              onClick={handleWipeAllData}
+              className="p-1 bg-red-950/60 hover:bg-red-900 text-red-400 border border-red-800/60 rounded-lg text-xs shadow active:scale-95 transition-transform"
+              title="Wipe: Limpar saves antigos e reiniciar"
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
+        </div>
+      )}
+
+        {/* WORKSPACE / GAMEPLAY CANVAS */}
+        <section className={`workspace flex-1 h-full min-h-0 overflow-hidden flex flex-col ${view === 'Aventura' ? 'p-0' : 'p-1 sm:p-2.5'} relative min-w-0`}>
+          {/* Header (Desktop - Apenas fora da tela de Aventura) */}
+          {view !== 'Aventura' && (
+            <header className="hidden md:flex items-center justify-between border-b border-zinc-800/80 pb-1 mb-1.5 shrink-0 gap-2">
+            <div className="flex items-center gap-2 text-xs sm:text-sm text-zinc-400 truncate">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+              <span>Aventura:</span>
+              <strong className="text-amber-300 font-bold truncate">
+                {room?.name || 'Sua próxima história'}
+              </strong>
+              <span className="hidden lg:inline text-zinc-500 font-mono text-xs truncate">
+                • {CAMPAIGN_ACTS[currentAct].title.split(':')[0]}
+              </span>
+            </div>
+
+            {/* Out-of-Combat Village Dialogue & Exploration Ribbon (Integrated in Header) */}
+            {!state?.combat && (
+              <div className="flex items-center gap-1 shrink-0 bg-zinc-900/90 border border-zinc-800 rounded-xl px-2 py-0.5 shadow-inner">
+                {(!state?.enemies || state.enemies.length === 0) && (
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => handleTalkNpc('doran')}
+                      className="px-2 py-0.5 bg-emerald-950/90 hover:bg-emerald-800 text-emerald-300 border border-emerald-600/60 rounded-lg text-[10px] font-bold transition-all shadow active:scale-95"
+                      title="Conversar com Ancião Doran"
+                    >
+                      🧙 Doran
+                    </button>
+                    <button
+                      onClick={() => handleTalkNpc('elenor')}
+                      className="px-2 py-0.5 bg-amber-950/90 hover:bg-amber-800 text-amber-300 border border-amber-600/60 rounded-lg text-[10px] font-bold transition-all shadow active:scale-95"
+                      title="Conversar com Alquimista Elenor"
+                    >
+                      🧪 Elenor
+                    </button>
+                    <button
+                      onClick={() => handleTalkNpc('kaelen')}
+                      className="px-2 py-0.5 bg-red-950/90 hover:bg-red-800 text-red-300 border border-red-600/60 rounded-lg text-[10px] font-bold transition-all shadow active:scale-95"
+                      title="Treinar com Capitão Kaelen"
+                    >
+                      ⚔️ Kaelen
+                    </button>
+                    <button
+                      onClick={() => void action({ action: 'encounter' })}
+                      className="px-2 py-0.5 bg-red-900/80 hover:bg-red-700 text-red-100 border border-red-500 rounded-lg text-[10px] font-bold transition-all shadow animate-pulse active:scale-95"
+                      title="Iniciar Combate de Patrulha / Treino"
+                    >
+                      ⚔️ Combate
+                    </button>
+                    <span className="text-zinc-600 text-xs px-0.5">|</span>
+                  </div>
+                )}
+                {/* Fast Exploration Actions */}
+                <button
+                  disabled={busy}
+                  onClick={handleInvestigate}
+                  className="flex items-center gap-1 px-1.5 py-0.5 rounded-lg text-[10px] text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors"
+                  title="Investigar a área"
+                >
+                  <Search size={11} className="text-cyan-400" />
+                  <span className="hidden xl:inline">Investigar</span>
+                </button>
+                <button
+                  disabled={busy}
+                  onClick={handleInteract}
+                  className="flex items-center gap-1 px-1.5 py-0.5 rounded-lg text-[10px] text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors"
+                  title="Interagir com objeto"
+                >
+                  <Hand size={11} className="text-amber-400" />
+                  <span className="hidden xl:inline">Interagir</span>
+                </button>
+                <button
+                  disabled={busy}
+                  onClick={() => void action({ action: 'rest' })}
+                  className="flex items-center gap-1 px-1.5 py-0.5 rounded-lg text-[10px] text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors"
+                  title="Descanso Curto (Gasta Dados de Vida)"
+                >
+                  <Coffee size={11} className="text-amber-300" />
+                  <span className="hidden xl:inline">Descanso</span>
+                </button>
+              </div>
+            )}
+
+            <div className="flex items-center gap-1.5 shrink-0">
+              {/* Biome Selector */}
+              <div className="flex items-center gap-0.5 bg-zinc-900 border border-zinc-700/80 rounded-xl p-0.5 text-[10px] font-bold">
+                {(['village', 'forest', 'dungeon'] as const).map((b) => (
+                  <button
+                    key={b}
+                    onClick={() => handleTravel(b)}
+                    className={`px-2 py-0.5 rounded-lg transition-colors ${
+                      battlemapBiome === b ? 'bg-emerald-500/30 text-emerald-200 font-black' : 'text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    {b === 'village' ? 'Vila' : b === 'forest' ? 'Mata' : 'Dungeon'}
+                  </button>
+                ))}
+              </div>
+
+              {/* Dungeon Size Toggle */}
+              <div className="hidden sm:flex items-center gap-1 bg-zinc-900 border border-zinc-700/80 rounded-xl p-0.5 text-[11px] font-bold">
+                {([8, 12, 16] as const).map((sz) => (
+                  <button
+                    key={sz}
+                    onClick={() => {
+                      setDungeonSize(sz);
+                      setProceduralDungeon(generateProceduralDungeon(currentAct, sz, dungeonSeed));
+                    }}
+                    className={`px-2 py-0.5 rounded-lg transition-colors ${
+                      dungeonSize === sz ? 'bg-amber-500/30 text-amber-200' : 'text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    {sz}x{sz}
+                  </button>
+                ))}
+              </div>
+
+              {/* Journal / Mestre drawer toggle */}
+              <button
+                onClick={() => setIsJournalOpen(!isJournalOpen)}
+                className="flex items-center gap-1.5 px-2 py-1 bg-zinc-900 hover:bg-zinc-800 text-amber-300 border border-zinc-700 rounded-xl text-xs font-semibold shadow transition-colors"
+                title="Abrir Narração da Mestre"
+              >
+                <Flame size={13} className="text-amber-400" />
+                <span className="hidden sm:inline">Mestre</span>
+              </button>
+
+              {/* Quests Button */}
+              <button
+                onClick={() => setShowQuests(true)}
+                className="flex items-center gap-1.5 px-2 py-1 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-700 rounded-xl text-xs font-semibold shadow transition-colors"
+              >
+                <ScrollText size={13} className="text-cyan-400" />
+                <span className="hidden sm:inline">Missões</span>
+              </button>
+
+              <button className="text-button text-xs" onClick={() => setRoomDialog(true)}>
+                <Users size={14} />
+                <span className="hidden sm:inline">{room ? 'Mesas' : 'Entrar'}</span>
+              </button>
+
+              {/* Quick Wipe / Reset Save & Cache Button */}
+              <button
+                onClick={handleWipeAllData}
+                className="flex items-center gap-1 px-2 py-1 bg-red-950/60 hover:bg-red-900 text-red-300 border border-red-700/60 rounded-xl text-xs font-bold shadow transition-colors"
+                title="Wipe: Limpar saves antigos e começar do zero na Vila do Rio Verde"
+              >
+                <Trash2 size={13} className="text-red-400" />
+                <span className="hidden sm:inline">Wipe</span>
+              </button>
+            </div>
+          </header>
+          )}
+
+          {/* Error Banner */}
+          {error && (
+            <div role="alert" className="error-banner animate-slide-up mb-2">
+              <span>{error}</span>
+              <button onClick={() => { setError(''); void load(room?.id); }}>
+                <RefreshCw size={15} />
+              </button>
+            </div>
+          )}
+
+          {/* Floating Combat Text Overlay */}
+          <FloatingTextOverlay items={floatingTexts} />
+
+          {/* Fast 3D Dice Roller (Stabilized with memoized handler to prevent re-roll loop) */}
+          <DiceRoller3D roll={currentDiceRoll} onComplete={handleDiceComplete} />
+
+          {/* Paper Doll & Inventory Modal */}
+          {showInventory && active && (
+            <InventoryPanel
+              hero={active}
+              onClose={() => setShowInventory(false)}
+              onUpdateHero={(updated) => {
+                void action({ action: 'character', value: updated });
+              }}
+              onUseItem={(itemId, targetId) => void handleUseItem(itemId, targetId)}
+            />
+          )}
+
+          {/* Quest Log Modal */}
+          {showQuests && (
+            <QuestLog
+              onClose={() => setShowQuests(false)}
+              notes={state?.notes || ''}
+              onSaveNotes={(n) => void action({ action: 'notes', notes: n })}
+              isOwner={owner}
+            />
+          )}
+
+          {/* NPC Dialog Modal */}
+          <NpcDialog
+            npc={activeNpcDialog}
+            onClose={() => setActiveNpcDialog(null)}
+            onSelectOption={(txt) => void narrate(txt)}
+          />
+
+          {/* Character Sheet Inspector/Editor Modal */}
+          <CharacterEditor
+            value={character}
+            onClose={() => setCharacter(null)}
+            busy={busy}
+            onSave={async (value) => {
+              const ok = await action({ action: 'character', value });
+              if (ok) setCharacter(null);
+            }}
+          />
+
+          {/* Full Character Creator Wizard (4 Steps D&D 5e) */}
+          <CharacterCreator
+            isOpen={showCharacterCreator}
+            onClose={() => setShowCharacterCreator(false)}
+            busy={busy}
+            onSave={async (newHero) => {
+              const res = await action({ action: 'character', value: newHero });
+              if (res) {
+                setShowCharacterCreator(false);
+                setSelected(newHero.id);
+                void narrate('', `${newHero.name}, um ${newHero.species} ${newHero.className} de nível ${newHero.level}, juntou-se à aventura na abadia!`);
+              }
+            }}
+          />
+
+          {/* Mobile Drawer (Hamburger Menu & Strategic Tools) */}
+          <MobileDrawer
+            isOpen={isMobileDrawerOpen}
+            onClose={() => setIsMobileDrawerOpen(false)}
+            currentView={view}
+            onSelectView={(v) => setView(v)}
+            campaignAct={CAMPAIGN_ACTS[currentAct]}
+            dungeonSize={dungeonSize}
+            onChangeDungeonSize={(sz) => {
+              setDungeonSize(sz);
+              setProceduralDungeon(generateProceduralDungeon(currentAct, sz, dungeonSeed));
+            }}
+            onGenerateNewDungeon={() => {
+              const newSeed = Date.now();
+              setDungeonSeed(newSeed);
+              setProceduralDungeon(generateProceduralDungeon(currentAct, dungeonSize, newSeed));
+              void narrate('', 'Uma nova área da masmorra foi revelada sob a névoa arcaica.');
+            }}
+            onOpenCharacterCreator={() => setShowCharacterCreator(true)}
+            onOpenInventory={() => setShowInventory(true)}
+            onOpenQuests={() => setShowQuests(true)}
+            onOpenJournal={() => setIsJournalOpen(true)}
+            onOpenRoomsDialog={() => setRoomDialog(true)}
+            onWipeAllData={handleWipeAllData}
+            onShortRest={() => void action({ action: 'rest' })}
+            onLongRest={() => void action({ action: 'rest' })}
+            onAdvanceAct={handleAdvanceAct}
+            canAdvanceAct={isActBossDefeated}
+            isOwner={owner}
+            busy={busy}
+          />
+
+          {/* MAIN VIEW SWITCHER */}
+          {loading ? (
+            <div className="flex-1 flex items-center justify-center text-zinc-400 font-mono text-sm">
+              Carregando mundo de jogo…
+            </div>
+          ) : !room && view !== 'Compêndio' && view !== 'Mestre de jogo' ? (
+            /* Welcome / No Room Selected */
+            <div className="flex-1 flex flex-col items-center justify-center text-center p-6 gap-4">
+              <div className="w-20 h-20 rounded-3xl bg-amber-950/40 border border-amber-500/50 flex items-center justify-center text-amber-300 shadow-2xl">
+                <Dices size={40} />
+              </div>
+              <h1 className="text-3xl font-serif text-amber-200">Bem-vindo a Crônicas do Vazio</h1>
+              <p className="text-zinc-400 max-w-md text-sm leading-relaxed">
+                Crie ou entre em uma mesa para iniciar a aventura com automação de regras D&D 5e e narração rápida da Groq por IA.
+              </p>
+              {signedIn ? (
+                <button
+                  className="gold-button mt-2"
+                  disabled={busy}
+                  onClick={() => void action({ action: 'create', name: roomName })}
+                >
+                  <Plus size={18} /> Criar Mesa de Aventura
+                </button>
+              ) : (
+                <a className="gold-button mt-2" href="/signin-with-chatgpt?return_to=/" target="_top">
+                  Entrar e Começar <ChevronRight size={16} />
+                </a>
+              )}
+            </div>
+          ) : view === 'Aventura' && room ? (
+            /* --- AVENTURA: FULL-SCREEN ELECTRONIC GAME CANVAS WITH FLOATING DARK FANTASY HUD --- */
+            <div className="flex-1 min-h-0 h-full w-full flex flex-col overflow-hidden bg-[#0a0d0a] relative select-none">
+              {/* ═══ TOP INITIATIVE RIBBON BAR (DARK CHARCOAL & VINTAGE GOLD) ═══ */}
+              <div className="flex items-center justify-between px-3 py-1 bg-[#101410]/95 border-b border-[#2e3a2b]/80 z-30 shrink-0 gap-2">
+                {/* Left: Quick Location & Status */}
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <strong className="text-xs sm:text-sm font-serif text-amber-200 truncate max-w-[130px] sm:max-w-[200px]">
+                    {room?.name || 'Vila do Rio Verde'}
+                  </strong>
+                  <span className="hidden xl:inline text-[11px] text-amber-400/80 font-mono">
+                    • {CAMPAIGN_ACTS[currentAct].title.split(':')[0]}
+                  </span>
+                </div>
+
+                {/* Center: Initiative Ribbon */}
+                <div className="flex-1 min-w-0 flex items-center justify-center">
+                  <InitiativeRibbon
+                    combat={Boolean(state?.combat)}
+                    round={state?.round || 1}
+                    turn={state?.turn || 0}
+                    order={state?.order || []}
+                    characters={state?.characters || []}
+                    enemies={state?.enemies || []}
+                    selectedTargetId={selectedEnemyId}
+                    onSelectTarget={(id) => {
+                      const isHero = state?.characters.some((c) => c.id === id);
+                      if (isHero) setSelected(id);
+                      else setSelectedEnemyId(id);
+                    }}
+                  />
+                </div>
+
+                {/* Right: Biome Selector & Mobile Tab Switcher */}
+                {/* Right: Biome Selector, HUD Toggles & Mobile Tab Switcher */}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {/* Biome Selector */}
+                  <div className="hidden lg:flex items-center gap-0.5 bg-zinc-900 border border-[#384333]/80 rounded-xl p-0.5 text-[10px] font-bold">
+                    {(['village', 'forest', 'dungeon'] as const).map((b) => (
+                      <button
+                        key={b}
+                        onClick={() => handleTravel(b)}
+                        className={`px-2 py-0.5 rounded-lg transition-colors ${
+                          battlemapBiome === b ? 'bg-amber-600/35 text-amber-200 font-black' : 'text-zinc-400 hover:text-white'
+                        }`}
+                      >
+                        {b === 'village' ? 'Vila' : b === 'forest' ? 'Mata' : 'Dungeon'}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Desktop Quick HUD Toggles */}
+                  <div className="hidden md:flex items-center gap-1">
+                    <button
+                      onClick={() => setShowPartySidebar(!showPartySidebar)}
+                      className={`flex items-center gap-1 px-2 py-0.5 rounded-lg border text-xs font-semibold transition-all ${
+                        showPartySidebar
+                          ? 'bg-amber-600/30 text-amber-200 border-amber-500/60 shadow-sm'
+                          : 'bg-zinc-900 text-zinc-400 border-zinc-700 hover:text-white'
+                      }`}
+                      title="Alternar Painel do Grupo"
+                    >
+                      <Users size={12} />
+                      <span>Grupo</span>
+                    </button>
+
+                    <button
+                      onClick={() => setShowGmSidebar(!showGmSidebar)}
+                      className={`flex items-center gap-1 px-2 py-0.5 rounded-lg border text-xs font-semibold transition-all ${
+                        showGmSidebar
+                          ? 'bg-amber-600/30 text-amber-200 border-amber-500/60 shadow-sm'
+                          : 'bg-zinc-900 text-zinc-400 border-zinc-700 hover:text-white'
+                      }`}
+                      title="Alternar Painel do Mestre e Chat"
+                    >
+                      <Flame size={12} className={showGmSidebar ? 'text-amber-400' : 'text-zinc-400'} />
+                      <span>Mestre</span>
+                    </button>
+
+                    <button
+                      onClick={() => setShowQuests(true)}
+                      className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-cyan-300 border border-zinc-700 text-xs font-semibold transition-colors"
+                      title="Diário de Missões"
+                    >
+                      <ScrollText size={12} />
+                      <span>Missões</span>
+                    </button>
+
+                    <button
+                      onClick={() => setShowInventory(true)}
+                      className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-amber-300 border border-zinc-700 text-xs font-semibold transition-colors"
+                      title="Mochila e Equipamentos"
+                    >
+                      <Package size={12} />
+                      <span>Mochila</span>
+                    </button>
+                  </div>
+
+                  {/* Mobile Tab Switcher */}
+                  <div className="flex md:hidden items-center gap-0.5 bg-zinc-900 border border-[#384333]/80 rounded-xl p-0.5 text-[11px] font-bold">
+                    <button
+                      onClick={() => setMobileTab('party')}
+                      className={`px-2 py-0.5 rounded-lg transition-colors ${
+                        mobileTab === 'party' ? 'bg-amber-600 text-black font-bold' : 'text-zinc-400'
+                      }`}
+                    >
+                      Grupo
+                    </button>
+                    <button
+                      onClick={() => setMobileTab('map')}
+                      className={`px-2 py-0.5 rounded-lg transition-colors ${
+                        mobileTab === 'map' ? 'bg-amber-600 text-black font-bold' : 'text-zinc-400'
+                      }`}
+                    >
+                      Mapa
+                    </button>
+                    <button
+                      onClick={() => setMobileTab('gm')}
+                      className={`px-2 py-0.5 rounded-lg transition-colors ${
+                        mobileTab === 'gm' ? 'bg-amber-600 text-black font-bold' : 'text-zinc-400'
+                      }`}
+                    >
+                      Mestre
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* ═══ COMBAT TURN ANNOUNCEMENT BANNER (PROMINENT & UNMISTAKABLE) ═══ */}
+              {state?.combat && (
+                <div className={`w-full px-4 py-1.5 flex items-center justify-between z-30 shrink-0 shadow-md border-b transition-all duration-300 ${
+                  isHeroTurn
+                    ? 'bg-gradient-to-r from-amber-950/95 via-amber-900/90 to-amber-950/95 border-amber-400/90 shadow-[0_0_25px_rgba(251,191,36,0.35)]'
+                    : 'bg-gradient-to-r from-red-950/95 via-zinc-950 to-red-950/95 border-red-700/90 shadow-[0_0_25px_rgba(239,68,68,0.35)]'
+                }`}>
+                  <div className="flex items-center gap-2.5">
+                    {isHeroTurn ? (
+                      <Swords size={16} className="text-amber-400 animate-pulse" />
+                    ) : (
+                      <Flame size={16} className="text-red-500 animate-pulse" />
+                    )}
+                    <span className={`font-serif font-black text-xs sm:text-sm tracking-wider uppercase ${
+                      isHeroTurn ? 'text-amber-200' : 'text-red-200'
+                    }`}>
+                      {isHeroTurn
+                        ? `🛡️ SEU TURNO: ${turnEntity?.name || active?.name}`
+                        : `⚔️ TURNO DO INIMIGO: ${turnEntity?.name || 'Inimigo'}`}
+                    </span>
+                    <span className={`text-[10px] font-mono font-black px-2 py-0.5 rounded-full ${
+                      isHeroTurn ? 'bg-amber-400 text-black shadow' : 'bg-red-600 text-white shadow'
+                    }`}>
+                      RODADA {state.round || 1}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2 text-xs font-mono">
+                    {isHeroTurn ? (
+                      <>
+                        <span className={state.actionUsed ? 'text-amber-300 font-bold' : 'text-emerald-300 font-bold animate-pulse'}>
+                          {state.actionUsed ? '⏳ Ação Utilizada' : '✨ 1 Ação'}
+                        </span>
+                        <span className="text-zinc-500 hidden sm:inline">•</span>
+                        <span className="text-cyan-300 font-bold hidden sm:inline">{active?.speed || 9}m Deslocamento</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (active) void action({ action: 'pass', character: active.id });
+                          }}
+                          disabled={busy}
+                          className="ml-1 sm:ml-2 px-3 py-1 rounded-lg bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-600 hover:from-amber-400 hover:to-yellow-300 text-black font-black text-xs uppercase tracking-wider shadow-[0_0_15px_rgba(245,158,11,0.6)] border border-yellow-200 transition-all active:scale-95 flex items-center gap-1.5 animate-pulse cursor-pointer"
+                          title="Finalizar turno do personagem e passar a vez (D&D 5e)"
+                        >
+                          <Clock size={13} className="stroke-[3]" />
+                          <span>Fim de Turno</span>
+                        </button>
+                      </>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <span className="text-zinc-400 animate-pulse">Aguardando IA do adversário...</span>
+                        {owner && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void action({ action: 'pass', character: turnId });
+                            }}
+                            disabled={busy}
+                            className="px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[10px] font-mono border border-zinc-600"
+                            title="Mestre: Pular / Avançar Turno"
+                          >
+                            Pular ▶
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* ═══ FULL-SCREEN GAME ARENA WITH FLOATING CRPG HUD ═══ */}
+              <div className="flex-1 min-h-0 h-full w-full relative overflow-hidden bg-[#050806]">
+                {/* 1. FULL-BLEED TACTICAL DUNGEON BOARD (Fills 100% of Screen Space) */}
+                <div className="absolute inset-0 z-0 flex items-center justify-center overflow-hidden">
+                  <TacticalMap
+                    characters={state?.characters || []}
+                    enemies={state?.enemies || []}
+                    selectedHeroId={selected}
+                    selectedEnemyId={selectedEnemyId}
+                    targetingAction={targetingAction}
+                    onCancelTargeting={() => setTargetingAction(null)}
+                    onSelectToken={(type, id) => {
+                      if (type === 'hero') setSelected(id);
+                      else setSelectedEnemyId(id);
+                    }}
+                    onMoveHero={(heroId, x, y) => {
+                      void action({ action: 'move', character: heroId, x, y, maxBound: dungeonSize - 1 });
+                    }}
+                    onTargetEnemy={(enemyId) => {
+                      handleExecuteAttack(enemyId);
+                    }}
+                    locationName={location.name}
+                    locationLabel={location.label}
+                    isCombat={Boolean(state?.combat)}
+                    canMove={Boolean(canEdit && (!state?.combat || isHeroTurn))}
+                    dungeon={proceduralDungeon}
+                    battlemap={organicBattlemap}
+                    onInteractObject={handleInteractObject}
+                    busy={busy}
+                    activeTurnId={state?.combat ? turnId : undefined}
+                  />
+                </div>
+
+                {/* ═══ FLOATING TACTICAL COMBAT TURN CONTROLS (ALWAYS VISIBLE OUTSIDE BOTTOM CONSOLE) ═══ */}
+                {state?.combat && (
+                  <div className="absolute top-3 left-1/2 -translate-x-1/2 z-35 flex items-center gap-2 px-3.5 py-1.5 rounded-2xl bg-[#0b0f0b]/95 border-2 border-amber-500/90 shadow-[0_8px_32px_rgba(0,0,0,0.95)] backdrop-blur-xl animate-fade-in pointer-events-auto">
+                    <div className="flex items-center gap-1.5 pr-2.5 border-r border-zinc-800 text-xs font-mono">
+                      <span className="text-[10px] uppercase font-bold text-zinc-400">Rodada</span>
+                      <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold text-xs border border-amber-500/30">
+                        {state.round || 1}
+                      </span>
+                    </div>
+
+                    {isHeroTurn ? (
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5 text-xs font-serif font-bold text-amber-200 pr-1">
+                          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping inline-block" />
+                          <span>Sua Vez: {active?.name || 'Herói'}</span>
+                        </div>
+
+                        {/* Quick Attack Button if enemy exists */}
+                        {currentEnemy && (
+                          <button
+                            type="button"
+                            onClick={() => handleExecuteAttack(currentEnemy.id)}
+                            disabled={busy}
+                            className="px-2.5 py-1 rounded-xl bg-red-950/90 hover:bg-red-900 border border-red-500/80 text-red-100 text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95 shadow hover:shadow-red-500/20 cursor-pointer"
+                            title={`Atacar ${currentEnemy.name} com ${active?.weapon || 'arma'}`}
+                          >
+                            <Swords size={13} className="text-red-400" />
+                            <span className="hidden sm:inline">Atacar</span>
+                            <span className="text-[11px] text-red-200">({currentEnemy.name})</span>
+                          </button>
+                        )}
+
+                        {/* Big Glowing Pass Turn / End Turn Button */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (active) void action({ action: 'pass', character: active.id });
+                          }}
+                          disabled={busy}
+                          className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-600 hover:from-amber-400 hover:to-yellow-300 text-black font-black text-xs uppercase tracking-wider shadow-[0_0_20px_rgba(245,158,11,0.7)] border-2 border-yellow-200 transition-all active:scale-95 flex items-center gap-1.5 animate-pulse cursor-pointer"
+                          title="Encerrar seu turno e passar a vez para o próximo combatente (D&D 5e)"
+                        >
+                          <Clock size={15} className="stroke-[3] text-black" />
+                          <span>PASSAR O TURNO (FIM)</span>
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className="text-red-300 font-serif font-bold animate-pulse">
+                          ⚔️ Turno do Inimigo: {turnEntity?.name || 'Adversário'}
+                        </span>
+                        {owner && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void action({ action: 'pass', character: turnId });
+                            }}
+                            disabled={busy}
+                            className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-mono border border-zinc-600 ml-1 shadow cursor-pointer"
+                            title="Mestre: Forçar avanço de turno"
+                          >
+                            Forçar Próximo ▶
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 1.1 LIVE GM NARRATION FLOATING WIDGET (Always visible directly on screen) */}
+                {latestGmLog && showNarrativeBox && !showGmSidebar && (
+                  <div className="absolute top-3 right-3 sm:right-4 z-20 max-w-xs sm:max-w-md bg-[#090e09]/95 border border-amber-500/70 rounded-2xl p-3 shadow-[0_8px_30px_rgba(0,0,0,0.85)] backdrop-blur-xl animate-fade-in pointer-events-auto">
+                    <div className="flex items-center justify-between border-b border-zinc-800 pb-1.5 mb-1.5">
+                      <div className="flex items-center gap-1.5 text-amber-400 text-xs font-serif font-bold">
+                        <Flame size={14} className="animate-pulse text-amber-400" />
+                        <span>Voz do Mestre</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setShowGmSidebar(true)}
+                          className="text-[10px] text-amber-400 hover:text-amber-200 underline font-mono"
+                        >
+                          Histórico
+                        </button>
+                        <button
+                          onClick={() => setShowNarrativeBox(false)}
+                          className="text-zinc-500 hover:text-zinc-300 p-0.5 rounded"
+                          title="Dispensar narração"
+                        >
+                          <X size={13} />
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-xs text-amber-100/95 leading-relaxed font-serif italic line-clamp-4">
+                      "{latestGmLog.text}"
+                    </p>
+                  </div>
+                )}
+
+                {/* 2. DOCKED LEFT PARTY COLUMN (LATERAL PARTY ROSTER - COLLAPSIBLE) */}
+                {showPartySidebar && (
+                  <div className={`absolute top-2 left-2 bottom-20 z-20 pointer-events-auto transition-all duration-300 ${
+                    mobileTab === 'party' ? 'flex' : 'hidden'
+                  } md:flex flex-col`}>
+                    <PartySidebar
+                      party={state?.characters || []}
+                      activeHeroId={selected}
+                      onSelectHero={(id) => setSelected(id)}
+                      onOpenCharacterSheet={(hero) => setCharacter(structuredClone(hero))}
+                      onOpenInventory={() => setShowInventory(true)}
+                      onOpenCharacterCreator={() => setShowCharacterCreator(true)}
+                      onShortRest={() => void action({ action: 'shortRest' })}
+                      onWipeData={handleWipeAllData}
+                      onSelectView={(v) => setView(v)}
+                      busy={busy}
+                    />
+                  </div>
+                )}
+
+                {/* 3. DOCKED RIGHT GAMEMASTER DRAWER (CAIXA DE GM RETRÁTIL COM NARRATIVA E CHAT) */}
+                {showGmSidebar && (
+                  <div className={`absolute top-2 right-2 bottom-20 z-30 pointer-events-auto transition-all duration-300 ${
+                    mobileTab === 'gm' ? 'flex' : 'hidden'
+                  } md:flex flex-col shadow-2xl`}>
+                    <GamemasterSidebar
+                      combat={Boolean(state?.combat)}
+                      round={state?.round || 1}
+                      isHeroTurn={Boolean(isHeroTurn)}
+                      activeHero={active || null}
+                      currentEnemy={currentEnemy}
+                      onAttack={() => {
+                        if (active && currentEnemy) {
+                          handleExecuteAttack(currentEnemy.id);
+                        } else if (active && state?.enemies?.[0]) {
+                          handleExecuteAttack(state.enemies[0].id);
+                        }
+                      }}
+                      onCastSpell={() => {
+                        if (active) {
+                          const target = currentEnemy || state?.enemies?.[0];
+                          if (target) {
+                            void action({
+                              action: 'spell',
+                              character: active.id,
+                              spellName: 'Raio de Fogo',
+                              spellLevel: 0,
+                              damageFormula: '1d10',
+                              target: target.id
+                            });
+                          }
+                        }
+                      }}
+                      onUsePotion={() => {
+                        if (active) void handleUseItem('pocao-cura', active.id);
+                      }}
+                      onEndTurn={() => {
+                        if (active) void action({ action: 'pass', character: active.id });
+                      }}
+                      onNarrateMessage={(msg) => void narrate(msg)}
+                      onRollDice={(formula) => {
+                        void action({ action: 'roll', formula }).then((res) => {
+                          if (res) void narrate('', `${active?.name || 'Aventureiro'} rolou ${formula}.`);
+                        });
+                      }}
+                      lastRollResult={currentDiceRoll ? { formula: currentDiceRoll.label || '1d20', total: currentDiceRoll.total, detail: `d20 (${currentDiceRoll.raw}) + ${currentDiceRoll.modifier} = ${currentDiceRoll.total}` } : null}
+                      logs={state?.logs || []}
+                      aiChoices={aiChoices}
+                      busy={busy}
+                      onClose={() => setShowGmSidebar(false)}
+                    />
+                  </div>
+                )}
+
+                {/* 4. FLOATING BOTTOM ACTION BAR (ATAQUE, MAGIA, PASSAR TURNO, POÇÃO, ITENS) */}
+                {active && (
+                  <div className={`absolute bottom-1 left-1/2 -translate-x-1/2 z-30 pointer-events-auto w-[98%] max-w-6xl transition-all ${
+                    mobileTab === 'party' || mobileTab === 'gm' ? 'hidden md:block' : 'block'
+                  }`}>
+                    <BottomPlayerHud
+                      activeHero={active}
+                      party={state?.characters || []}
+                      onSelectHero={(id) => setSelected(id)}
+                      onActionSelect={(act) => {
+                        if (act.category === 'attack') {
+                          const enemyTarget = currentEnemy || state?.enemies?.find((e) => e.hp > 0);
+                          if (enemyTarget) {
+                            setTargetingAction(act);
+                            void handleExecuteAttack(enemyTarget.id);
+                          } else {
+                            setTargetingAction(act);
+                          }
+                        } else if (act.category === 'spell') {
+                          const enemyTarget = currentEnemy || state?.enemies?.find((e) => e.hp > 0);
+                          if (act.healFormula) {
+                            void action({
+                              action: 'spell',
+                              character: active.id,
+                              spellName: act.name,
+                              spellLevel: act.spellLevel || 0,
+                              healFormula: act.healFormula,
+                              targetId: active.id
+                            });
+                          } else if (enemyTarget) {
+                            setTargetingAction(act);
+                            void action({
+                              action: 'spell',
+                              character: active.id,
+                              spellName: act.name,
+                              spellLevel: act.spellLevel || 0,
+                              damageFormula: act.damageFormula || '1d10',
+                              target: enemyTarget.id
+                            });
+                          } else {
+                            setTargetingAction(act);
+                          }
+                        } else if (act.category === 'item') {
+                          void handleUseItem(act.id, active.id);
+                        } else if (act.category === 'skill') {
+                          void action({
+                            action: 'check',
+                            character: active.id,
+                            skill: act.name.replace('Teste de ', ''),
+                            mode: 'normal'
+                          });
+                        } else if (act.category === 'action') {
+                          void action({ action: 'tactic', character: active.id, tactic: act.id });
+                        }
+                      }}
+                      onOpenInventory={() => setShowInventory(true)}
+                      onOpenCharacterSheet={() => {
+                        if (active) setCharacter(structuredClone(active));
+                      }}
+                      onEndTurn={() => {
+                        if (active) void action({ action: 'pass', character: active.id });
+                      }}
+                      onUseItem={(itemId, targetId) => void handleUseItem(itemId, targetId)}
+                      isCombat={Boolean(state?.combat)}
+                      isHeroTurn={Boolean(isHeroTurn)}
+                      actionUsed={Boolean(state?.actionUsed)}
+                      busy={busy}
+                    />
+                  </div>
+                )}
+
+                {/* Act Boss Defeated Victory Banner */}
+                {isActBossDefeated && (
+                  <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 w-[95%] max-w-md bg-gradient-to-r from-amber-950/95 via-stone-900/95 to-amber-950/95 border border-amber-400/80 rounded-xl p-2 shadow-2xl flex items-center justify-between animate-slide-up backdrop-blur-md">
+                    <div className="flex items-center gap-2 text-xs text-amber-200">
+                      <Sparkles size={16} className="text-amber-400 animate-spin-slow shrink-0" />
+                      <div>
+                        <strong className="block text-xs font-serif text-amber-300">
+                          Inimigos Derrotados!
+                        </strong>
+                        <span className="text-[10px] text-zinc-300">
+                          A passagem para o próximo nível está liberada.
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={handleAdvanceAct}
+                      className="gold-button text-xs py-1 px-2.5 animate-pulse shrink-0"
+                    >
+                      <span>Avançar de Ato</span>
+                      <ChevronRight size={13} />
+                    </button>
+                  </div>
+                )}
+                {/* 1.2 ON-SCREEN CAMPAIGN STEP TRACKER & STORY GUIDE */}
+                <CampaignTracker
+                  state={state || null}
+                  onTalkNpc={(npcId) => handleTalkNpc(npcId)}
+                  onTravel={(b) => handleTravel(b)}
+                  onStartCombat={() => void action({ action: 'encounter' })}
+                  onOpenJournal={() => setShowQuests(true)}
+                />
+
+                {/* Quest Log / Diário de Missões Modal */}
+                {showQuests && (
+                  <QuestLog
+                    onClose={() => setShowQuests(false)}
+                    notes={state?.notes || ''}
+                    onSaveNotes={(n) => void action({ action: 'notes', notes: n })}
+                    isOwner={Boolean(owner)}
+                  />
+                )}
+
+                {/* Inventory & Equipment Panel Modal */}
+                {showInventory && active && (
+                  <InventoryPanel
+                    hero={active}
+                    onUpdateHero={(updated) => void action({ action: 'character', value: updated })}
+                    onClose={() => setShowInventory(false)}
+                    onUseItem={(itemId, targetId) => void handleUseItem(itemId, targetId)}
+                  />
+                )}
+              </div>
+            </div>
+          ) : view === 'Personagens' && room ? (
+            /* --- PERSONAGENS VIEW --- */
+            <Tabs defaultValue="heroes">
+              <TabsList>
+                <TabsTrigger value="heroes">Aventureiros</TabsTrigger>
+                <TabsTrigger value="npcs">NPCs</TabsTrigger>
+              </TabsList>
+              <TabsContent value="heroes">
+                <div className="character-grid">
+                  {state?.characters.map((c) => (
+                    <article className="panel character-card" key={c.id}>
+                      <div className="character-title">
+                        <div className="avatar large">{c.name[0]}</div>
+                        <div>
+                          <h2>{c.name}</h2>
+                          <p>
+                            {c.species} • {c.className} {c.level}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="vitals">
+                        <span>
+                          <Heart size={17} />
+                          {c.hp}/{c.maxHp} PV
+                        </span>
+                        <span>
+                          <Shield size={17} />
+                          {c.ac} CA
+                        </span>
+                        <span>
+                          <Footprints size={17} />
+                          {c.speed} m
+                        </span>
+                      </div>
+                      <div className="stats">
+                        {abilities.map((x, i) => (
+                          <div key={x}>
+                            <small>{x.slice(0, 3).toUpperCase()}</small>
+                            <strong>{signed(mod(c.stats[i]))}</strong>
+                            <span>{c.stats[i]}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="button-row">
+                        <button
+                          className="gold-button"
+                          disabled={busy || state.combat || (!owner && c.owner !== user)}
+                          onClick={() => setCharacter(structuredClone(c))}
+                        >
+                          Abrir ficha
+                        </button>
+                        <button
+                          className="text-button"
+                          onClick={() => {
+                            setSelected(c.id);
+                            setView('Aventura');
+                          }}
+                        >
+                          Jogar <ChevronRight size={14} />
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                  <button
+                    className="create-card"
+                    disabled={busy || state?.combat}
+                    onClick={() => setShowCharacterCreator(true)}
+                  >
+                    <Plus size={28} />
+                    <h2>Um novo aventureiro</h2>
+                    <p>Crie a próxima história da sua mesa (Wizard de 4 passos).</p>
+                  </button>
+                </div>
+              </TabsContent>
+              <TabsContent value="npcs">
+                <div className="character-grid">
+                  {state?.npcs.map((n) => (
+                    <article className="panel" key={n.id}>
+                      <p className="eyebrow">{n.role}</p>
+                      <h2>{n.name}</h2>
+                      <p>{n.description}</p>
+                    </article>
+                  ))}
+                </div>
+                {owner && (
+                  <form
+                    className="panel form-grid"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void action({ action: 'npc', name: npcName, role: npcRole, description: npcDesc }).then(
+                        (ok) => {
+                          if (ok) {
+                            setNpcName('');
+                            setNpcRole('');
+                            setNpcDesc('');
+                          }
+                        }
+                      );
+                    }}
+                  >
+                    <label className="field">
+                      Nome
+                      <input required maxLength={60} value={npcName} onChange={(e) => setNpcName(e.target.value)} />
+                    </label>
+                    <label className="field">
+                      Papel
+                      <input required maxLength={100} value={npcRole} onChange={(e) => setNpcRole(e.target.value)} />
+                    </label>
+                    <label className="field span-two">
+                      História
+                      <textarea
+                        required
+                        value={npcDesc}
+                        maxLength={3000}
+                        onChange={(e) => setNpcDesc(e.target.value)}
+                      />
+                    </label>
+                    <button disabled={busy} className="gold-button">
+                      Adicionar NPC
+                    </button>
+                  </form>
+                )}
+              </TabsContent>
+            </Tabs>
+          ) : view === 'Compêndio' ? (
+            /* --- COMPÊNDIO VIEW --- */
+            <Library />
+          ) : view === 'Atlas' && room ? (
+            /* --- ATLAS VIEW --- */
+            <>
+              <div className="atlas-scene scene">
+                <div className="scene-caption">
+                  <p className="eyebrow">VALDORIA • CAMPANHA ORIGINAL</p>
+                  <h2>Três lugares. Um segredo.</h2>
+                </div>
+              </div>
+              <div className="character-grid">
+                {locations.map((l, i) => (
+                  <article className="panel" key={l.name}>
+                    <p className="eyebrow">LOCAL {(i + 1).toString().padStart(2, '0')}</p>
+                    <h2>{l.name}</h2>
+                    <p>{l.text}</p>
+                    <button
+                      disabled={busy || !owner || state!.combat || state!.location === i}
+                      className="gold-button"
+                      onClick={() =>
+                        void action({ action: 'location', location: i }).then((ok) => {
+                          if (ok) setView('Aventura');
+                        })
+                      }
+                    >
+                      {state!.location === i ? 'Você está aqui' : 'Viajar para cá'} <ChevronRight size={15} />
+                    </button>
+                  </article>
+                ))}
+              </div>
+            </>
+          ) : view === 'Mestre de jogo' ? (
+            /* --- MESTRE DE JOGO VIEW --- */
+            <div className="settings-layout">
+              <section className="panel">
+                <p className="eyebrow">
+                  <Flame size={16} /> INTELIGÊNCIA ARTIFICIAL (GROQ & GEMINI)
+                </p>
+                <h2>A Voz do seu Mundo</h2>
+                <p>
+                  A Groq (Llama 3.3 70B) fornece inferência ultrarrápida para videogame, com narrações concisas e opções de ação interativas.
+                </p>
+                <label className="field">
+                  Chave da API (Groq ou Gemini)
+                  <input
+                    type="password"
+                    autoComplete="off"
+                    value={key}
+                    onChange={(e) => setKey(e.target.value)}
+                    placeholder="Chave personalizada ou deixe em branco para chave padrão"
+                  />
+                </label>
+                <p className="muted">
+                  A chave oficial da Groq já está configurada por padrão no servidor para a sua mesa.
+                </p>
+              </section>
+
+              <section className="panel">
+                <p className="eyebrow">
+                  <ScrollText size={16} /> CONTRATO DE REGRAS 5e
+                </p>
+                <h2>Automação & Narrativa</h2>
+                <p>
+                  A IA não altera PV, resultados mecânicos ou fichas. Ela reage estritamente ao resultado das rolagens automáticas do motor de regras.
+                </p>
+              </section>
+            </div>
+          ) : null}
+
+          {/* Footer Attribution */}
+          <footer className="mt-8 text-center text-xs text-zinc-600 border-t border-zinc-900 pt-3">
+            This work includes material from the System Reference Document 5.2.1 (“SRD 5.2.1”) by Wizards of the Coast LLC. Licenciado sob CC BY 4.0.
+          </footer>
+        </section>
+
+        {/* Mobile Navigation Bar */}
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-[#121612]/95 backdrop-blur-md border-t border-zinc-800 flex items-center justify-around py-1.5 px-2 shadow-2xl">
+          {navigation.map(({ icon: Icon, name }) => (
+            <button
+              key={name}
+              onClick={() => setView(name)}
+              className={`flex flex-col items-center gap-0.5 px-2 py-1 rounded-lg transition-colors text-[10px] font-medium ${
+                view === name ? 'text-amber-400 font-bold' : 'text-zinc-400 hover:text-zinc-200'
+              }`}
+            >
+              <Icon size={18} className={view === name ? 'text-amber-400' : 'text-zinc-400'} />
+              <span>{name}</span>
+            </button>
+          ))}
+        </nav>
+      </main>
+
+      {/* Room Manager Dialog */}
+      <Dialog open={roomDialog} onOpenChange={setRoomDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Suas mesas de aventura</DialogTitle>
+            <DialogDescription>Continue uma campanha existente ou comece uma nova.</DialogDescription>
+          </DialogHeader>
+          {!signedIn ? (
+            <a className="gold-button" href="/signin-with-chatgpt?return_to=/" target="_top">
+              Entrar para jogar
+            </a>
+          ) : (
+            <>
+              {rooms.map((r) => (
+                <button
+                  className="choice compact"
+                  key={r.id}
+                  onClick={() => void load(r.id).then(() => setRoomDialog(false))}
+                >
+                  {r.name}
+                  <ChevronRight size={15} />
+                </button>
+              ))}
+              {room && (
+                <div className="panel">
+                  <p className="eyebrow">CÓDIGO DE CONVITE</p>
+                  <code>{room.code}</code>
+                  <p className="muted">Compartilhe o código com seus amigos para jogarem juntos.</p>
+                </div>
+              )}
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void action({ action: 'create', name: roomName }).then((ok) => {
+                    if (ok) setRoomDialog(false);
+                  });
+                }}
+              >
+                <label className="field">
+                  Nome da nova mesa
+                  <input required maxLength={80} value={roomName} onChange={(e) => setRoomName(e.target.value)} />
+                </label>
+                <button className="gold-button" disabled={busy}>
+                  Criar mesa
+                </button>
+              </form>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void action({ action: 'join', code: joinCode }).then((ok) => {
+                    if (ok) setRoomDialog(false);
+                  });
+                }}
+              >
+                <label className="field">
+                  Entrar com código
+                  <input required value={joinCode} onChange={(e) => setJoinCode(e.target.value)} />
+                </label>
+                <button disabled={busy} className="choice compact">
+                  Entrar na mesa
+                </button>
+              </form>
+
+              <div className="pt-3 border-t border-zinc-800">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRoomDialog(false);
+                    void handleWipeAllData();
+                  }}
+                  className="w-full flex items-center justify-center gap-2 p-2.5 rounded-xl bg-red-950/80 hover:bg-red-900 border border-red-600/70 text-red-200 text-xs font-bold transition-all shadow-md active:scale-95"
+                >
+                  <Trash2 size={14} />
+                  <span>Wipe: Limpar Saves Antigos e Reiniciar Campanha</span>
+                </button>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+      {/* 5e Character Creator & Builder Modal */}
+      {showCharacterCreator && (
+        <CharacterCreator
+          isOpen={showCharacterCreator}
+          onClose={() => setShowCharacterCreator(false)}
+          onSave={async (newHero) => {
+            const ok = await action({ action: 'character', value: newHero });
+            if (ok) {
+              setShowCharacterCreator(false);
+              setSelected(newHero.id);
+            }
+          }}
+          busy={busy}
+        />
+      )}
+    </SidebarProvider>
+  );
+}
+
+// Character Sheet Editor
+function CharacterEditor({
+  value,
+  onClose,
+  onSave,
+  busy
+}: {
+  value: Character | null;
+  onClose: () => void;
+  onSave: (c: Character) => Promise<void>;
+  busy: boolean;
+}) {
+  const [c, setC] = useState<Character>(newCharacter());
+  useEffect(() => {
+    if (value) setC(structuredClone(value));
+  }, [value]);
+
+  const update = <K extends keyof Character>(key: K, val: Character[K]) =>
+    setC((p) => ({ ...p, [key]: val }));
+
+  const toggle = (key: 'skills' | 'expertise' | 'conditions', v: string) =>
+    update(key, c[key].includes(v) ? c[key].filter((x) => x !== v) : [...c[key], v]);
+
+  return (
+    <Dialog open={!!value} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="character-dialog max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{value?.id ? 'Ficha de ' + value.name : 'Forje seu aventureiro'}</DialogTitle>
+          <DialogDescription>Ficha editável • SRD 5.2.1 • Edição 2024</DialogDescription>
+        </DialogHeader>
+
+        <Tabs defaultValue="identity">
+          <TabsList className="editor-tabs">
+            {[
+              ['identity', 'Identidade'],
+              ['stats', 'Atributos'],
+              ['combat', 'Combate'],
+              ['magic', 'Magias'],
+              ['story', 'História']
+            ].map(([id, label]) => (
+              <TabsTrigger key={id} value={id}>
+                {label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+
+          <TabsContent value="identity">
+            <div className="form-grid">
+              <label className="field">
+                Nome
+                <input value={c.name} maxLength={60} onChange={(e) => update('name', e.target.value)} />
+              </label>
+              <Pick label="Classe" value={c.className} options={classes.map((x) => x[0])} onChange={(v) => update('className', v)} />
+              <Pick label="Espécie" value={c.species} options={species} onChange={(v) => update('species', v)} />
+              <Pick label="Antecedente" value={c.background} options={['Acólito', 'Criminoso', 'Sábio', 'Soldado']} onChange={(v) => update('background', v)} />
+              <label className="field">
+                Nível
+                <input type="number" min={1} max={20} value={c.level} onChange={(e) => update('level', +e.target.value)} />
+              </label>
+              <label className="field">
+                Experiência
+                <input type="number" min={0} value={c.xp} onChange={(e) => update('xp', +e.target.value)} />
+              </label>
+              <label className="field span-two">
+                Características e Talentos
+                <textarea value={c.features} maxLength={6000} onChange={(e) => update('features', e.target.value)} />
+              </label>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="stats">
+            <div className="stats editable">
+              {abilities.map((name, i) => (
+                <label key={name}>
+                  <small>{name}</small>
+                  <input
+                    type="number"
+                    min={1}
+                    max={30}
+                    value={c.stats[i]}
+                    onChange={(e) => update('stats', c.stats.map((n, j) => (i === j ? +e.target.value : n)))}
+                  />
+                  <strong>{signed(mod(c.stats[i]))}</strong>
+                </label>
+              ))}
+            </div>
+            <p>Bônus de proficiência: <strong>{signed(prof(c.level))}</strong></p>
+            <h3>Perícias e especialização</h3>
+            <div className="skills-grid">
+              {skills.map(([name, i]) => (
+                <div className="skill-row" key={name}>
+                  <label>
+                    <Checkbox checked={c.skills.includes(name)} onCheckedChange={() => toggle('skills', name)} />
+                    {name} {signed(mod(c.stats[i]) + (c.skills.includes(name) ? prof(c.level) : 0) + (c.expertise.includes(name) ? prof(c.level) : 0))}
+                  </label>
+                  <label title="Especialização">
+                    <Checkbox checked={c.expertise.includes(name)} onCheckedChange={() => toggle('expertise', name)} />
+                    Esp.
+                  </label>
+                </div>
+              ))}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="combat">
+            <div className="form-grid">
+              {([
+                ['hp', 'PV atuais'],
+                ['maxHp', 'PV máximos'],
+                ['ac', 'Classe de armadura'],
+                ['speed', 'Deslocamento (m)'],
+                ['attack', 'Bônus de ataque'],
+                ['exhaustion', 'Exaustão (0–6)']
+              ] as const).map(([k, label]) => (
+                <label className="field" key={k}>
+                  {label}
+                  <input type="number" value={c[k]} onChange={(e) => update(k, +e.target.value)} />
+                </label>
+              ))}
+              <label className="field">
+                Arma
+                <input value={c.weapon} onChange={(e) => update('weapon', e.target.value)} />
+              </label>
+              <label className="field">
+                Dano
+                <input value={c.damage} onChange={(e) => update('damage', e.target.value)} />
+              </label>
+            </div>
+            <button
+              type="button"
+              className="choice compact mt-3"
+              onClick={() => {
+                const hd = classes.find((x) => x[0] === c.className)![1];
+                const hp = hd + mod(c.stats[2]) + (c.level - 1) * Math.max(1, hd / 2 + 1 + mod(c.stats[2]));
+                setC({
+                  ...c,
+                  maxHp: Math.max(1, hp),
+                  hp: Math.max(1, hp),
+                  attack: prof(c.level) + mod(c.stats[0])
+                });
+              }}
+            >
+              Calcular PV e Ataque com base nos Atributos
+            </button>
+          </TabsContent>
+
+          <TabsContent value="magic">
+            <Pick
+              label="Atributo de conjuração"
+              value={abilities[c.spellAbility]}
+              options={abilities}
+              onChange={(v) => update('spellAbility', abilities.indexOf(v))}
+            />
+            <p className="mt-2">
+              CD de magia: <strong>{8 + prof(c.level) + mod(c.stats[c.spellAbility])}</strong> • Ataque mágico: <strong>{signed(prof(c.level) + mod(c.stats[c.spellAbility]))}</strong>
+            </p>
+            <div className="slots mt-3">
+              {c.slots.map((n, i) => (
+                <label className="field" key={i}>
+                  Círculo {i + 1}
+                  <input
+                    type="number"
+                    min={0}
+                    max={20}
+                    value={n}
+                    onChange={(e) => update('slots', c.slots.map((v, j) => (i === j ? +e.target.value : v)))}
+                  />
+                  <input
+                    title="Espaços usados"
+                    type="number"
+                    min={0}
+                    max={n}
+                    value={c.usedSlots[i]}
+                    onChange={(e) => update('usedSlots', c.usedSlots.map((v, j) => (i === j ? +e.target.value : v)))}
+                  />
+                </label>
+              ))}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="story">
+            <label className="field">
+              Equipamento e moedas
+              <textarea value={c.inventory} maxLength={10000} onChange={(e) => update('inventory', e.target.value)} />
+            </label>
+            <label className="field">
+              História e notas
+              <textarea value={c.notes} maxLength={10000} onChange={(e) => update('notes', e.target.value)} />
+            </label>
+          </TabsContent>
+        </Tabs>
+
+        <div className="button-row mt-4">
+          <button disabled={busy} className="gold-button" onClick={() => void onSave(c)}>
+            {busy ? 'Salvando…' : 'Salvar personagem'}
+          </button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// SRD Compendium Library Component
+function Library() {
+  const [category, setCategory] = useState('Regras');
+  const [q, setQ] = useState('');
+  const [items, setItems] = useState<{ page: number; name: string; excerpt?: string }[]>([]);
+  const [page, setPage] = useState<{ page: number; text: string } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const t = setTimeout(() => {
+      setLoading(true);
+      fetch('/api/library?category=' + encodeURIComponent(category) + '&q=' + encodeURIComponent(q), {
+        signal: controller.signal
+      })
+        .then((r) => {
+          if (!r.ok) throw Error();
+          return r.json() as Promise<{ results: { page: number; name: string; excerpt?: string }[] }>;
+        })
+        .then((d) => setItems(d.results))
+        .catch((e) => {
+          if (e.name !== 'AbortError') setError('Não foi possível carregar o compêndio.');
+        })
+        .finally(() => setLoading(false));
+    }, 180);
+    return () => {
+      clearTimeout(t);
+      controller.abort();
+    };
+  }, [category, q]);
+
+  async function open(n: number) {
+    try {
+      const r = await fetch('/api/library?page=' + n);
+      if (!r.ok) throw Error();
+      setPage(await r.json());
+    } catch {
+      setError('Não foi possível abrir a página.');
+    }
+  }
+
+  return (
+    <>
+      <div className="library-toolbar">
+        <Pick
+          value={category}
+          options={['Regras', 'Classes', 'Origens', 'Equipamento', 'Magias', 'Glossário', 'Itens mágicos', 'Bestiário']}
+          onChange={setCategory}
+        />
+        <label className="search-input">
+          <Search size={18} />
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Buscar no texto original em inglês…"
+            aria-label="Buscar regras"
+          />
+        </label>
+        <a className="text-button" href="/SRD-5.2.1.pdf" target="_blank" rel="noreferrer">
+          SRD completo <ArrowUpRight size={16} />
+        </a>
+      </div>
+      <p className="muted">
+        {loading ? 'Buscando…' : items.length + ' resultados'} • Texto oficial em inglês. A GM explica em português.
+      </p>
+      {error && <p role="alert">{error}</p>}
+      <div className="library-grid">
+        {items.map((p, i) => (
+          <button className="panel library-card" key={i} onClick={() => void open(p.page)}>
+            {category === 'Bestiário' ? <Skull size={23} /> : <BookOpen size={23} />}
+            <small>SRD 5.2.1 • PÁGINA {p.page}</small>
+            <h3>{p.name}</h3>
+            {p.excerpt && <p>{p.excerpt}…</p>}
+            <span className="read-link">
+              Consultar <ChevronRight size={15} />
+            </span>
+          </button>
+        ))}
+      </div>
+      {!loading && !items.length && (
+        <div className="panel">Nenhum resultado. Tente um termo em inglês, como “concentration” ou “dragon”.</div>
+      )}
+      <Dialog open={!!page} onOpenChange={(v) => { if (!v) setPage(null); }}>
+        <DialogContent className="rule-dialog">
+          <DialogHeader>
+            <DialogTitle>SRD 5.2.1 • Página {page?.page}</DialogTitle>
+            <DialogDescription>Texto extraído da referência oficial.</DialogDescription>
+          </DialogHeader>
+          <pre className="rule-text">{page?.text}</pre>
+          <a className="gold-button" href={'/SRD-5.2.1.pdf#page=' + page?.page} target="_blank" rel="noreferrer">
+            Abrir página original <ArrowUpRight size={15} />
+          </a>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
