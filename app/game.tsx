@@ -31,7 +31,8 @@ import {
   Hand,
   Coffee,
   Clock,
-  Crosshair
+  Crosshair,
+  MapPin
 } from 'lucide-react';
 import { SidebarProvider, Sidebar, SidebarContent, SidebarMenu, SidebarMenuItem, SidebarMenuButton } from '@/components/ui/sidebar';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -149,11 +150,11 @@ function Pick({
 function createInitialRoom(): Room {
   const st = initialState();
   return {
-    id: 'local-room-1',
-    owner: 'local-hero',
+    id: '',
+    owner: '',
     name: 'Vila do Rio Verde',
-    code: 'rio-verde-01',
-    version: 1,
+    code: '',
+    version: 0,
     state: st
   };
 }
@@ -161,10 +162,8 @@ function createInitialRoom(): Room {
 export default function Game() {
   const [view, setView] = useState('Aventura');
   const [room, setRoom] = useState<Room | null>(() => createInitialRoom());
-  const [rooms, setRooms] = useState<{ id: string; name: string }[]>([
-    { id: 'local-room-1', name: 'Vila do Rio Verde' }
-  ]);
-  const [user, setUser] = useState('local-hero');
+  const [rooms, setRooms] = useState<{ id: string; name: string }[]>([]);
+  const [user, setUser] = useState('');
   const [signedIn, setSignedIn] = useState(true);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -206,6 +205,10 @@ export default function Game() {
   const [mobileTab, setMobileTab] = useState<'party' | 'map' | 'gm'>('map');
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
   const [showCharacterCreator, setShowCharacterCreator] = useState(false);
+  const [interactingPlayer, setInteractingPlayer] = useState<Character | null>(null);
+  const actionQueueRef = React.useRef(Promise.resolve<any>(null));
+  const localMoveShieldRef = React.useRef<{ [charId: string]: { x: number; y: number; time: number } }>({});
+  const broadcastChannelRef = React.useRef<BroadcastChannel | null>(null);
   const [showPartySidebar, setShowPartySidebar] = useState(true);
   const [showGmSidebar, setShowGmSidebar] = useState(false);
   const [showNarrativeBox, setShowNarrativeBox] = useState(true);
@@ -260,6 +263,37 @@ export default function Game() {
     roomRef.current = room;
   }, [room]);
 
+  // Shield local optimistic coordinates against stale network rollbacks
+  const applyProtectedRoomState = useCallback((newRoom: Room) => {
+    setRoom((prev) => {
+      if (!prev) return newRoom;
+      if (newRoom.version < prev.version) return prev; // Do not apply older snapshot
+
+      const now = Date.now();
+      const protectedChars = (newRoom.state?.characters || []).map((char: Character) => {
+        const shield = localMoveShieldRef.current[char.id];
+        if (shield && now - shield.time < 2000) {
+          if (char.x === shield.x && char.y === shield.y) {
+            delete localMoveShieldRef.current[char.id];
+          } else {
+            return { ...char, x: shield.x, y: shield.y };
+          }
+        }
+        return char;
+      });
+
+      const safeRoom: Room = {
+        ...newRoom,
+        state: {
+          ...newRoom.state,
+          characters: protectedChars
+        }
+      };
+      roomRef.current = safeRoom;
+      return safeRoom;
+    });
+  }, []);
+
   // Data Loading
   const load = useCallback(async (id?: string) => {
     try {
@@ -273,24 +307,28 @@ export default function Game() {
         return;
       }
       setSignedIn(d.signedIn);
-      setUser(d.user || 'local-hero');
+      setUser(d.user || '');
       if (d.rooms && d.rooms.length > 0) setRooms(d.rooms);
       if (d.room) {
-        setRoom(d.room);
-        roomRef.current = d.room;
+        applyProtectedRoomState(d.room);
         const heroes = d.room.state.characters || [];
-        setSelected((p) =>
-          heroes.some((c: Character) => c.id === p)
-            ? p
-            : heroes[0]?.id || ''
-        );
+        const isMmo = d.room.id === 'mmo-world-village';
+        const myHeroes = heroes.filter((c: Character) => isMmo ? c.owner === d.user : (!c.owner || c.owner === d.user));
+        setSelected((p) => {
+          if (p && heroes.some((c: Character) => c.id === p && (isMmo ? c.owner === d.user : true))) {
+            return p;
+          }
+          return myHeroes[0]?.id || heroes[0]?.id || '';
+        });
         setSelectedEnemyId((e) =>
           d.room.state.enemies.some((en: Enemy) => en.id === e)
             ? e
             : d.room.state.enemies[0]?.id || ''
         );
-        if (heroes.length === 0) {
+        if (heroes.length === 0 || (isMmo && myHeroes.length === 0)) {
           setShowCharacterCreator(true);
+        } else if (isMmo && myHeroes.length >= 1) {
+          setShowCharacterCreator(false);
         }
       }
       return d;
@@ -317,45 +355,128 @@ export default function Game() {
     }
   }, []);
 
-  // Polling for multiplayer updates
+  // REAL-TIME MULTIPLAYER SYNCHRONIZATION: BroadcastChannel (0ms local cross-window) + SSE Stream (<20ms network)
   useEffect(() => {
-    if (!room) return;
-    const timer = setInterval(() => {
-      if (!busy) void load(room.id);
-    }, 5000);
-    return () => clearInterval(timer);
-  }, [room?.id, busy, load]);
+    if (!room?.id || typeof window === 'undefined') return;
 
-  // General server action dispatch
-  async function action(a: Record<string, unknown>) {
-    if (busy) return null;
-    setBusy(true);
-    setError('');
+    const roomId = room.id;
+    let eventSource: EventSource | null = null;
+    let bc: BroadcastChannel | null = null;
+
+    // 1. BroadcastChannel for instant (0ms) sync between tabs and windows on the same PC
     try {
-      const curRoom = roomRef.current;
-      const r = await fetch('/api/game', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ room: curRoom?.id, version: curRoom?.version, ...a })
-      });
-      const d = (await r.json()) as ApiData;
-      if (!r.ok) {
-        if (r.status === 409) await load(curRoom?.id);
-        throw Error(d.error);
-      }
-      if (d.room) {
-        setRoom(d.room);
-        roomRef.current = d.room;
-      } else {
-        await load(d.id || curRoom?.id);
-      }
-      return d;
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Não foi possível salvar.');
-      return null;
-    } finally {
-      setBusy(false);
+      bc = new BroadcastChannel(`mmo_sync_${roomId}`);
+      broadcastChannelRef.current = bc;
+      bc.onmessage = (event) => {
+        if (event.data?.type === 'ROOM_MUTATION' && event.data?.room) {
+          applyProtectedRoomState(event.data.room);
+        } else if (event.data?.type === 'HERO_MOVE') {
+          // Instant token glide from peer window on same machine
+          const { heroId, x, y } = event.data;
+          setRoom((prev) => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              state: {
+                ...prev.state,
+                characters: prev.state.characters.map((c) => (c.id === heroId ? { ...c, x, y } : c))
+              }
+            };
+          });
+        }
+      };
+    } catch {
+      // BroadcastChannel might not be supported in older envs
     }
+
+    // 2. Server-Sent Events (SSE) Stream for dedicated-server style push broadcasts
+    try {
+      eventSource = new EventSource(`/api/game/stream?room=${encodeURIComponent(roomId)}`);
+      eventSource.addEventListener('update', (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data && data.state && data.version !== undefined) {
+            const streamedRoom: Room = {
+              id: roomId,
+              owner: roomRef.current?.owner || '',
+              name: roomRef.current?.name || '',
+              code: roomRef.current?.code || '',
+              version: data.version,
+              state: data.state
+            };
+            applyProtectedRoomState(streamedRoom);
+          }
+        } catch (err) {
+          console.warn('SSE event parse notice:', err);
+        }
+      });
+    } catch (err) {
+      console.warn('SSE connection notice:', err);
+    }
+
+    // 3. Fallback heartbeat polling
+    const timer = setInterval(() => {
+      if (!busy) {
+        void load(roomId);
+      }
+    }, 1500);
+
+    return () => {
+      clearInterval(timer);
+      if (eventSource) {
+        eventSource.close();
+      }
+      if (bc) {
+        bc.close();
+        if (broadcastChannelRef.current === bc) {
+          broadcastChannelRef.current = null;
+        }
+      }
+    };
+  }, [room?.id, applyProtectedRoomState, busy, load]);
+
+  // General server action dispatch with queue to eliminate lag and prevent dropping fast clicks
+  async function action(a: Record<string, unknown>) {
+    setError('');
+    const task = actionQueueRef.current.then(async () => {
+      setBusy(true);
+      try {
+        const curRoom = roomRef.current;
+        const r = await fetch('/api/game', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ room: curRoom?.id, version: curRoom?.version, ...a })
+        });
+        const d = (await r.json()) as ApiData;
+        if (!r.ok) {
+          if (r.status === 409) await load(curRoom?.id);
+          throw Error(d.error);
+        }
+        if (d.room) {
+          applyProtectedRoomState(d.room);
+          try {
+            broadcastChannelRef.current?.postMessage({
+              type: 'ROOM_MUTATION',
+              room: d.room
+            });
+          } catch {}
+        } else {
+          await load(d.id || curRoom?.id);
+        }
+        return d;
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Não foi possível salvar.');
+        if (a.action === 'move') {
+          void load(roomRef.current?.id);
+        }
+        return null;
+      } finally {
+        setBusy(false);
+      }
+    });
+
+    actionQueueRef.current = task.catch(() => {});
+    return task;
   }
 
   // Groq AI Narration trigger
@@ -403,6 +524,8 @@ export default function Game() {
   const turnEntity = [...(state?.characters || []), ...(state?.enemies || [])].find((c) => c.id === turnId);
   const isHeroTurn = active && turnId === active.id;
   const isActBossDefeated = state?.enemies ? state.enemies.length > 0 && state.enemies.every((e) => e.hp <= 0) : false;
+  const isMmoRoom = room?.id === 'mmo-world-village';
+  const myHeroes = (state?.characters || []).filter((c) => isMmoRoom ? c.owner === user : (!c.owner || c.owner === user));
   const currentEnemy = state?.enemies?.find((e) => e.id === selectedEnemyId) || state?.enemies?.[0] || null;
   const latestGmLog = state?.logs ? [...state.logs].reverse().find((l) => l.kind === 'gm') : null;
 
@@ -734,11 +857,18 @@ export default function Game() {
                 ))}
               </SidebarMenu>
             </SidebarContent>
-            <div className="nav-bottom mt-auto p-4 border-t border-zinc-800">
-              <span className="edition block text-center mb-2">5e • REGRAS 2024</span>
+            <div className="nav-bottom mt-auto p-4 border-t border-zinc-800 flex flex-col gap-1.5">
+              <span className="edition block text-center mb-1">5e • REGRAS 2024</span>
               <button className="text-button w-full justify-center" onClick={() => setRoomDialog(true)}>
                 <Plus size={15} /> Minhas mesas
               </button>
+              <a
+                href="/admin/map-editor"
+                className="text-button w-full justify-center text-zinc-400 hover:text-amber-300 text-xs py-1"
+                title="Abrir Editor Administrativo de Mapas"
+              >
+                <MapPin size={14} /> Editor de Mapas
+              </a>
             </div>
           </Sidebar>
         )}
@@ -801,155 +931,68 @@ export default function Game() {
         {/* WORKSPACE / GAMEPLAY CANVAS */}
         <section className={`workspace flex-1 h-full min-h-0 overflow-hidden flex flex-col ${view === 'Aventura' ? 'p-0' : 'p-1 sm:p-2.5'} relative min-w-0`}>
           {/* Header (Desktop - Apenas fora da tela de Aventura) */}
+          {/* Header (Exibido nas telas de Personagens, Compêndio, Atlas e Mestre) */}
           {view !== 'Aventura' && (
-            <header className="hidden md:flex items-center justify-between border-b border-zinc-800/80 pb-1 mb-1.5 shrink-0 gap-2">
-            <div className="flex items-center gap-2 text-xs sm:text-sm text-zinc-400 truncate">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-              <span>Aventura:</span>
-              <strong className="text-amber-300 font-bold truncate">
-                {room?.name || 'Sua próxima história'}
-              </strong>
-              <span className="hidden lg:inline text-zinc-500 font-mono text-xs truncate">
-                • {CAMPAIGN_ACTS[currentAct].title.split(':')[0]}
-              </span>
-            </div>
-
-            {/* Out-of-Combat Village Dialogue & Exploration Ribbon (Integrated in Header) */}
-            {!state?.combat && (
-              <div className="flex items-center gap-1 shrink-0 bg-zinc-900/90 border border-zinc-800 rounded-xl px-2 py-0.5 shadow-inner">
-                {(!state?.enemies || state.enemies.length === 0) && (
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => handleTalkNpc('doran')}
-                      className="px-2 py-0.5 bg-emerald-950/90 hover:bg-emerald-800 text-emerald-300 border border-emerald-600/60 rounded-lg text-[10px] font-bold transition-all shadow active:scale-95"
-                      title="Conversar com Ancião Doran"
-                    >
-                      🧙 Doran
-                    </button>
-                    <button
-                      onClick={() => handleTalkNpc('elenor')}
-                      className="px-2 py-0.5 bg-amber-950/90 hover:bg-amber-800 text-amber-300 border border-amber-600/60 rounded-lg text-[10px] font-bold transition-all shadow active:scale-95"
-                      title="Conversar com Alquimista Elenor"
-                    >
-                      🧪 Elenor
-                    </button>
-                    <button
-                      onClick={() => handleTalkNpc('kaelen')}
-                      className="px-2 py-0.5 bg-red-950/90 hover:bg-red-800 text-red-300 border border-red-600/60 rounded-lg text-[10px] font-bold transition-all shadow active:scale-95"
-                      title="Treinar com Capitão Kaelen"
-                    >
-                      ⚔️ Kaelen
-                    </button>
-                    <button
-                      onClick={() => void action({ action: 'encounter' })}
-                      className="px-2 py-0.5 bg-red-900/80 hover:bg-red-700 text-red-100 border border-red-500 rounded-lg text-[10px] font-bold transition-all shadow animate-pulse active:scale-95"
-                      title="Iniciar Combate de Patrulha / Treino"
-                    >
-                      ⚔️ Combate
-                    </button>
-                    <span className="text-zinc-600 text-xs px-0.5">|</span>
-                  </div>
-                )}
-                {/* Fast Exploration Actions */}
-                <button
-                  disabled={busy}
-                  onClick={handleInvestigate}
-                  className="flex items-center gap-1 px-1.5 py-0.5 rounded-lg text-[10px] text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors"
-                  title="Investigar a área"
-                >
-                  <Search size={11} className="text-cyan-400" />
-                  <span className="hidden xl:inline">Investigar</span>
-                </button>
-                <button
-                  disabled={busy}
-                  onClick={handleInteract}
-                  className="flex items-center gap-1 px-1.5 py-0.5 rounded-lg text-[10px] text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors"
-                  title="Interagir com objeto"
-                >
-                  <Hand size={11} className="text-amber-400" />
-                  <span className="hidden xl:inline">Interagir</span>
-                </button>
-                <button
-                  disabled={busy}
-                  onClick={() => void action({ action: 'rest' })}
-                  className="flex items-center gap-1 px-1.5 py-0.5 rounded-lg text-[10px] text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors"
-                  title="Descanso Curto (Gasta Dados de Vida)"
-                >
-                  <Coffee size={11} className="text-amber-300" />
-                  <span className="hidden xl:inline">Descanso</span>
-                </button>
+            <header className="flex flex-wrap items-center justify-between border-b border-zinc-800/80 pb-2.5 mb-3 shrink-0 gap-3 px-2 sm:px-4 bg-[#0a0f0d]/90 backdrop-blur-md rounded-xl">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 text-xs sm:text-sm text-zinc-400">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                  <span className="font-serif font-black tracking-wide text-zinc-200">Crônicas do Vazio</span>
+                  <span className="text-zinc-600 font-mono">•</span>
+                  <strong className="text-amber-300 font-bold uppercase tracking-wider text-xs sm:text-sm">
+                    {view}
+                  </strong>
+                </div>
               </div>
-            )}
 
-            <div className="flex items-center gap-1.5 shrink-0">
-              {/* Biome Selector */}
-              <div className="flex items-center gap-0.5 bg-zinc-900 border border-zinc-700/80 rounded-xl p-0.5 text-[10px] font-bold">
-                {(['village', 'forest', 'dungeon'] as const).map((b) => (
+              {/* Central Navigation Tabs for Out-of-Adventure Pages */}
+              <nav className="flex items-center gap-1 bg-zinc-950/90 border border-zinc-800/90 p-1 rounded-xl shadow-inner overflow-x-auto max-w-full">
+                {navigation.map(({ icon: Icon, name }) => (
                   <button
-                    key={b}
-                    onClick={() => handleTravel(b)}
-                    className={`px-2 py-0.5 rounded-lg transition-colors ${
-                      battlemapBiome === b ? 'bg-emerald-500/30 text-emerald-200 font-black' : 'text-zinc-400 hover:text-white'
+                    key={name}
+                    onClick={() => setView(name)}
+                    className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer truncate ${
+                      view === name
+                        ? 'bg-amber-500/25 text-amber-200 border border-amber-500/70 shadow'
+                        : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
                     }`}
                   >
-                    {b === 'village' ? 'Vila' : b === 'forest' ? 'Mata' : 'Dungeon'}
+                    <Icon size={14} className={view === name ? 'text-amber-400' : 'text-zinc-400'} />
+                    <span>{name}</span>
                   </button>
                 ))}
+                <a
+                  href="/admin/map-editor"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold text-sky-400 hover:text-sky-300 hover:bg-sky-950/40 border border-transparent hover:border-sky-700/60 transition-all cursor-pointer"
+                  title="Abrir o Editor de Mapas Administrativo em nova aba"
+                >
+                  <MapPin size={14} />
+                  <span>Editor de Mapas</span>
+                </a>
+              </nav>
+
+              {/* Action: Return to Adventure */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setRoomDialog(true)}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold text-zinc-300 bg-zinc-900 border border-zinc-700 hover:bg-zinc-800 cursor-pointer"
+                  title="Gerenciar mesas e instâncias"
+                >
+                  <Users size={13} className="text-emerald-400" />
+                  <span className="hidden sm:inline">{room?.id === 'mmo-world-village' ? 'Mundo MMO' : (room?.name || 'Mesas')}</span>
+                </button>
+                <button
+                  onClick={() => setView('Aventura')}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-600 via-yellow-500 to-amber-600 hover:from-amber-500 hover:to-yellow-400 text-black font-black text-xs uppercase tracking-wider shadow-lg shadow-amber-950/40 border border-amber-400/60 transition-all active:scale-95 cursor-pointer"
+                  title="Retornar para o mapa tático da aventura"
+                >
+                  <Swords size={14} className="stroke-[3]" />
+                  <span>Retornar ao Jogo</span>
+                </button>
               </div>
-
-              {/* Dungeon Size Toggle */}
-              <div className="hidden sm:flex items-center gap-1 bg-zinc-900 border border-zinc-700/80 rounded-xl p-0.5 text-[11px] font-bold">
-                {([8, 12, 16] as const).map((sz) => (
-                  <button
-                    key={sz}
-                    onClick={() => {
-                      setDungeonSize(sz);
-                      setProceduralDungeon(generateProceduralDungeon(currentAct, sz, dungeonSeed));
-                    }}
-                    className={`px-2 py-0.5 rounded-lg transition-colors ${
-                      dungeonSize === sz ? 'bg-amber-500/30 text-amber-200' : 'text-zinc-400 hover:text-white'
-                    }`}
-                  >
-                    {sz}x{sz}
-                  </button>
-                ))}
-              </div>
-
-              {/* Journal / Mestre drawer toggle */}
-              <button
-                onClick={() => setIsJournalOpen(!isJournalOpen)}
-                className="flex items-center gap-1.5 px-2 py-1 bg-zinc-900 hover:bg-zinc-800 text-amber-300 border border-zinc-700 rounded-xl text-xs font-semibold shadow transition-colors"
-                title="Abrir Narração da Mestre"
-              >
-                <Flame size={13} className="text-amber-400" />
-                <span className="hidden sm:inline">Mestre</span>
-              </button>
-
-              {/* Quests Button */}
-              <button
-                onClick={() => setShowQuests(true)}
-                className="flex items-center gap-1.5 px-2 py-1 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-700 rounded-xl text-xs font-semibold shadow transition-colors"
-              >
-                <ScrollText size={13} className="text-cyan-400" />
-                <span className="hidden sm:inline">Missões</span>
-              </button>
-
-              <button className="text-button text-xs" onClick={() => setRoomDialog(true)}>
-                <Users size={14} />
-                <span className="hidden sm:inline">{room ? 'Mesas' : 'Entrar'}</span>
-              </button>
-
-              {/* Quick Wipe / Reset Save & Cache Button */}
-              <button
-                onClick={handleWipeAllData}
-                className="flex items-center gap-1 px-2 py-1 bg-red-950/60 hover:bg-red-900 text-red-300 border border-red-700/60 rounded-xl text-xs font-bold shadow transition-colors"
-                title="Wipe: Limpar saves antigos e começar do zero na Vila do Rio Verde"
-              >
-                <Trash2 size={13} className="text-red-400" />
-                <span className="hidden sm:inline">Wipe</span>
-              </button>
-            </div>
-          </header>
+            </header>
           )}
 
           {/* Error Banner */}
@@ -1091,10 +1134,32 @@ export default function Game() {
               <div className="flex items-center justify-between px-3 py-1 bg-[#101410]/95 border-b border-[#2e3a2b]/80 z-30 shrink-0 gap-2">
                 {/* Left: Quick Location & Status */}
                 <div className="flex items-center gap-2 shrink-0">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  <strong className="text-xs sm:text-sm font-serif text-amber-200 truncate max-w-[130px] sm:max-w-[200px]">
-                    {room?.name || 'Vila do Rio Verde'}
-                  </strong>
+                  {room?.id === 'mmo-world-village' ? (
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.9)]" />
+                      <strong className="text-xs sm:text-sm font-serif text-emerald-300 truncate max-w-[130px] sm:max-w-[180px]" title="Mundo MMO Público Compartilhado">
+                        🌍 Mundo MMO
+                      </strong>
+                      <span className="text-[10px] bg-emerald-950/90 border border-emerald-600/60 text-emerald-300 px-1.5 py-0.2 rounded-full font-mono font-bold">
+                        {state?.characters?.length || 0} online
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                      <strong className="text-xs sm:text-sm font-serif text-amber-200 truncate max-w-[120px] sm:max-w-[160px]">
+                        {room?.name || 'Vila do Rio Verde'}
+                      </strong>
+                      <button
+                        type="button"
+                        onClick={() => void load('mmo-world-village')}
+                        className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-600/80 text-[10px] text-emerald-300 font-bold transition-all shadow cursor-pointer active:scale-95"
+                        title="Entrar no Mundo MMO Online com outros aventureiros"
+                      >
+                        <span>🌐 Mundo MMO</span>
+                      </button>
+                    </div>
+                  )}
                   <span className="hidden xl:inline text-[11px] text-amber-400/80 font-mono">
                     • {CAMPAIGN_ACTS[currentAct].title.split(':')[0]}
                   </span>
@@ -1302,7 +1367,34 @@ export default function Game() {
                       else setSelectedEnemyId(id);
                     }}
                     onMoveHero={(heroId, x, y) => {
-                      void action({ action: 'move', character: heroId, x, y, maxBound: dungeonSize - 1 });
+                      const curGrid = battlemapBiome === 'village' ? 8 : dungeonSize;
+                      // 1. Arm rollback shield to prevent older incoming snapshots from resetting position
+                      localMoveShieldRef.current[heroId] = { x, y, time: Date.now() };
+
+                      // 2. Optimistic Update: instantly update position locally for zero perceived latency!
+                      setRoom((prev) => {
+                        if (!prev) return prev;
+                        return {
+                          ...prev,
+                          state: {
+                            ...prev.state,
+                            characters: prev.state.characters.map((c) => (c.id === heroId ? { ...c, x, y } : c))
+                          }
+                        };
+                      });
+
+                      // 3. Instant local cross-window sync on the same PC (0ms latency)
+                      try {
+                        broadcastChannelRef.current?.postMessage({
+                          type: 'HERO_MOVE',
+                          heroId,
+                          x,
+                          y
+                        });
+                      } catch {}
+
+                      // 4. Authoritative server dispatch
+                      void action({ action: 'move', character: heroId, x, y, maxBound: curGrid - 1, gridSize: curGrid });
                     }}
                     onTargetEnemy={(enemyId) => {
                       handleExecuteAttack(enemyId);
@@ -1321,6 +1413,7 @@ export default function Game() {
                     projectiles={activeProjectiles}
                     biome={battlemapBiome}
                     movementUsed={state?.movementUsed || 0}
+                    onInteractPlayer={(hero) => setInteractingPlayer(hero)}
                   />
                 </div>
 
@@ -1490,7 +1583,13 @@ export default function Game() {
                       onSelectHero={(id) => setSelected(id)}
                       onOpenCharacterSheet={(hero) => setCharacter(structuredClone(hero))}
                       onOpenInventory={() => setShowInventory(true)}
-                      onOpenCharacterCreator={() => setShowCharacterCreator(true)}
+                      onOpenCharacterCreator={() => {
+                        if (room?.id === 'mmo-world-village' && state?.characters?.some((c) => c.owner === user)) {
+                          setError('Você já possui um personagem ativo neste mundo MMO.');
+                          return;
+                        }
+                        setShowCharacterCreator(true);
+                      }}
                       onOpenLevelUp={(hero) => {
                         setLevelUpHero(hero);
                         setShowLevelUp(true);
@@ -1499,6 +1598,15 @@ export default function Game() {
                       onWipeData={handleWipeAllData}
                       onSelectView={(v) => setView(v)}
                       busy={busy}
+                      currentUserId={user}
+                      isMmoRoom={room?.id === 'mmo-world-village'}
+                      onInteractPlayer={(hero) => setInteractingPlayer(hero)}
+                      onInviteToParty={async (hero) => {
+                        await action({ action: 'partyInvite', character: selected, targetCharId: hero.id });
+                      }}
+                      onLeaveParty={async () => {
+                        await action({ action: 'partyLeave', character: selected });
+                      }}
                     />
                   </div>
                 )}
@@ -1553,6 +1661,10 @@ export default function Game() {
                       aiChoices={aiChoices}
                       busy={busy}
                       onClose={() => setShowGmSidebar(false)}
+                      onSendChat={(text) => {
+                        void action({ action: 'chat', text, characterName: active?.name || user });
+                      }}
+                      isMmoRoom={room?.id === 'mmo-world-village'}
                     />
                   </div>
                 )}
@@ -1696,134 +1808,197 @@ export default function Game() {
             </div>
           ) : view === 'Personagens' && room ? (
             /* --- PERSONAGENS VIEW --- */
-            <Tabs defaultValue="heroes">
-              <TabsList>
-                <TabsTrigger value="heroes">Aventureiros</TabsTrigger>
-                <TabsTrigger value="npcs">NPCs</TabsTrigger>
-              </TabsList>
-              <TabsContent value="heroes">
-                <div className="character-grid">
-                  {state?.characters.map((c) => (
-                    <article className="panel character-card" key={c.id}>
-                      <div className="character-title">
-                        <div className="avatar large">{c.name[0]}</div>
-                        <div>
-                          <h2>{c.name}</h2>
-                          <p>
-                            {c.species} • {c.className} {c.level}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="vitals">
-                        <span>
-                          <Heart size={17} />
-                          {c.hp}/{c.maxHp} PV
-                        </span>
-                        <span>
-                          <Shield size={17} />
-                          {c.ac} CA
-                        </span>
-                        <span>
-                          <Footprints size={17} />
-                          {c.speed} m
-                        </span>
-                      </div>
-                      <div className="stats">
-                        {abilities.map((x, i) => (
-                          <div key={x}>
-                            <small>{x.slice(0, 3).toUpperCase()}</small>
-                            <strong>{signed(mod(c.stats[i]))}</strong>
-                            <span>{c.stats[i]}</span>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="button-row">
-                        <button
-                          className="gold-button"
-                          disabled={busy || state.combat || (!owner && c.owner !== user)}
-                          onClick={() => setCharacter(structuredClone(c))}
-                        >
-                          Abrir ficha
-                        </button>
-                        <button
-                          className="text-button"
-                          onClick={() => {
-                            setSelected(c.id);
-                            setView('Aventura');
-                          }}
-                        >
-                          Jogar <ChevronRight size={14} />
-                        </button>
-                      </div>
-                    </article>
-                  ))}
+            <div className="flex flex-col gap-3">
+              {/* Onboarding Banner for Characters */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-amber-950/40 via-[#101410] to-[#121612] border border-amber-500/40 shadow-xl gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/40 flex items-center justify-center text-amber-300 shrink-0 shadow">
+                    <Users size={22} />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-serif font-black text-amber-200">
+                      Câmara dos Aventureiros & Heróis
+                    </h2>
+                    <p className="text-xs text-zinc-300 max-w-xl leading-relaxed">
+                      Gerencie as fichas dos seus heróis ou forje um novo personagem com o construtor guiado D&D 5e (SRD 5.2.1). Todos os personagens estão prontos para explorar a aventura e o Mundo MMO.
+                    </p>
+                  </div>
+                </div>
+                {(!isMmoRoom || !myHeroes || myHeroes.length === 0) && (
                   <button
-                    className="create-card"
-                    disabled={busy || state?.combat}
                     onClick={() => setShowCharacterCreator(true)}
+                    disabled={busy}
+                    className="gold-button text-xs py-2 px-3.5 shrink-0 self-start sm:self-auto flex items-center gap-1.5 cursor-pointer"
                   >
-                    <Plus size={28} />
-                    <h2>Um novo aventureiro</h2>
-                    <p>Crie a próxima história da sua mesa (Wizard de 4 passos).</p>
+                    <Plus size={15} className="stroke-[3]" />
+                    <span>Criar Novo Personagem</span>
                   </button>
-                </div>
-              </TabsContent>
-              <TabsContent value="npcs">
-                <div className="character-grid">
-                  {state?.npcs.map((n) => (
-                    <article className="panel" key={n.id}>
-                      <p className="eyebrow">{n.role}</p>
-                      <h2>{n.name}</h2>
-                      <p>{n.description}</p>
-                    </article>
-                  ))}
-                </div>
-                {owner && (
-                  <form
-                    className="panel form-grid"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      void action({ action: 'npc', name: npcName, role: npcRole, description: npcDesc }).then(
-                        (ok) => {
-                          if (ok) {
-                            setNpcName('');
-                            setNpcRole('');
-                            setNpcDesc('');
-                          }
-                        }
-                      );
-                    }}
-                  >
-                    <label className="field">
-                      Nome
-                      <input required maxLength={60} value={npcName} onChange={(e) => setNpcName(e.target.value)} />
-                    </label>
-                    <label className="field">
-                      Papel
-                      <input required maxLength={100} value={npcRole} onChange={(e) => setNpcRole(e.target.value)} />
-                    </label>
-                    <label className="field span-two">
-                      História
-                      <textarea
-                        required
-                        value={npcDesc}
-                        maxLength={3000}
-                        onChange={(e) => setNpcDesc(e.target.value)}
-                      />
-                    </label>
-                    <button disabled={busy} className="gold-button">
-                      Adicionar NPC
-                    </button>
-                  </form>
                 )}
-              </TabsContent>
-            </Tabs>
+              </div>
+
+              <Tabs defaultValue="heroes">
+                <TabsList>
+                  <TabsTrigger value="heroes">Aventureiros ({state?.characters?.length || 0})</TabsTrigger>
+                  <TabsTrigger value="npcs">NPCs do Cenário ({state?.npcs?.length || 0})</TabsTrigger>
+                </TabsList>
+                <TabsContent value="heroes">
+                  <div className="character-grid">
+                    {state?.characters.map((c) => (
+                      <article className="panel character-card" key={c.id}>
+                        <div className="character-title">
+                          <div className="avatar large">{c.name[0]}</div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <h2>{c.name}</h2>
+                              {c.owner === user ? (
+                                <span className="text-[9px] bg-amber-500/20 text-amber-300 px-1.5 py-0.2 rounded border border-amber-500/40 font-mono">
+                                  Seu Herói
+                                </span>
+                              ) : (
+                                <span className="text-[9px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.2 rounded border border-emerald-500/40 font-mono">
+                                  Aliado
+                                </span>
+                              )}
+                            </div>
+                            <p>
+                              {c.species} • {c.className} {c.level}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="vitals">
+                          <span>
+                            <Heart size={17} />
+                            {c.hp}/{c.maxHp} PV
+                          </span>
+                          <span>
+                            <Shield size={17} />
+                            {c.ac} CA
+                          </span>
+                          <span>
+                            <Footprints size={17} />
+                            {c.speed} m
+                          </span>
+                        </div>
+                        <div className="stats">
+                          {abilities.map((x, i) => (
+                            <div key={x}>
+                              <small>{x.slice(0, 3).toUpperCase()}</small>
+                              <strong>{signed(mod(c.stats[i]))}</strong>
+                              <span>{c.stats[i]}</span>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="button-row">
+                          <button
+                            className="gold-button"
+                            disabled={busy || state.combat || (!owner && c.owner !== user)}
+                            onClick={() => setCharacter(structuredClone(c))}
+                          >
+                            Abrir ficha
+                          </button>
+                          <button
+                            className="text-button"
+                            onClick={() => {
+                              setSelected(c.id);
+                              setView('Aventura');
+                            }}
+                          >
+                            Jogar <ChevronRight size={14} />
+                          </button>
+                        </div>
+                      </article>
+                    ))}
+                    <button
+                      className="create-card"
+                      disabled={busy || state?.combat}
+                      onClick={() => setShowCharacterCreator(true)}
+                    >
+                      <Plus size={28} />
+                      <h2>Um novo aventureiro</h2>
+                      <p>Crie a próxima história da sua mesa (Wizard de 4 passos).</p>
+                    </button>
+                  </div>
+                </TabsContent>
+                <TabsContent value="npcs">
+                  <div className="character-grid">
+                    {state?.npcs.map((n) => (
+                      <article className="panel" key={n.id}>
+                        <p className="eyebrow">{n.role}</p>
+                        <h2>{n.name}</h2>
+                        <p>{n.description}</p>
+                      </article>
+                    ))}
+                  </div>
+                  {owner && (
+                    <form
+                      className="panel form-grid"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        void action({ action: 'npc', name: npcName, role: npcRole, description: npcDesc }).then(
+                          (ok) => {
+                            if (ok) {
+                              setNpcName('');
+                              setNpcRole('');
+                              setNpcDesc('');
+                            }
+                          }
+                        );
+                      }}
+                    >
+                      <label className="field">
+                        Nome
+                        <input required maxLength={60} value={npcName} onChange={(e) => setNpcName(e.target.value)} />
+                      </label>
+                      <label className="field">
+                        Papel
+                        <input required maxLength={100} value={npcRole} onChange={(e) => setNpcRole(e.target.value)} />
+                      </label>
+                      <label className="field span-two">
+                        História
+                        <textarea
+                          required
+                          value={npcDesc}
+                          maxLength={3000}
+                          onChange={(e) => setNpcDesc(e.target.value)}
+                        />
+                      </label>
+                      <button disabled={busy} className="gold-button">
+                        Adicionar NPC
+                      </button>
+                    </form>
+                  )}
+                </TabsContent>
+              </Tabs>
+            </div>
           ) : view === 'Compêndio' ? (
             /* --- COMPÊNDIO VIEW --- */
             <Library />
           ) : view === 'Atlas' && room ? (
             /* --- ATLAS VIEW --- */
             <>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-emerald-950/40 via-[#101612] to-[#121612] border border-emerald-500/40 shadow-xl gap-3 mb-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/40 flex items-center justify-center text-emerald-300 shrink-0 shadow">
+                    <Compass size={22} />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-serif font-black text-emerald-200">
+                      Atlas de Valdoria • Reinos e Biomas
+                    </h2>
+                    <p className="text-xs text-zinc-300 max-w-xl leading-relaxed">
+                      Viaje entre os cenários da campanha: da pacífica Vila do Rio Verde até as densas matas da Floresta dos Sussurros e as profundezas das Catacumbas.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setView('Aventura')}
+                  className="gold-button text-xs py-2 px-3 shrink-0 flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Swords size={14} />
+                  <span>Explorar no Tabuleiro</span>
+                </button>
+              </div>
+
               <div className="atlas-scene scene">
                 <div className="scene-caption">
                   <p className="eyebrow">VALDORIA • CAMPANHA ORIGINAL</p>
@@ -1925,7 +2100,42 @@ export default function Game() {
             </a>
           ) : (
             <>
-              {rooms.map((r) => (
+              {/* Highlighted MMO Shared World Entry */}
+              <button
+                type="button"
+                className={`w-full flex items-center justify-between p-3 rounded-xl text-left transition-all shadow-lg group cursor-pointer active:scale-98 border-2 ${
+                  room?.id === 'mmo-world-village'
+                    ? 'bg-emerald-950/90 border-emerald-400 ring-2 ring-emerald-500/40'
+                    : 'bg-gradient-to-r from-emerald-950/70 via-zinc-900 to-emerald-950/70 border-emerald-600/70 hover:border-emerald-400'
+                }`}
+                onClick={() => void load('mmo-world-village').then(() => setRoomDialog(false))}
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-full bg-emerald-500/20 border border-emerald-400 flex items-center justify-center text-emerald-300 shrink-0 shadow">
+                    🌍
+                  </div>
+                  <div>
+                    <strong className="block text-xs font-serif text-emerald-200 group-hover:text-emerald-100">
+                      Mundo MMO: Vila do Rio Verde (Público)
+                    </strong>
+                    <span className="text-[10px] text-zinc-400">
+                      Instância compartilhada • Todos os jogadores jogam e lutam juntos
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {room?.id === 'mmo-world-village' && (
+                    <span className="text-[9px] bg-emerald-500 text-black font-black px-1.5 py-0.5 rounded-full uppercase">
+                      Atual
+                    </span>
+                  )}
+                  <ChevronRight size={16} className="text-emerald-400 group-hover:translate-x-0.5 transition-transform shrink-0" />
+                </div>
+              </button>
+
+              <div className="w-full h-px bg-zinc-800 my-1" />
+
+              {rooms.filter((r) => r.id !== 'mmo-world-village').map((r) => (
                 <button
                   className="choice compact"
                   key={r.id}
@@ -1992,6 +2202,130 @@ export default function Game() {
           )}
         </DialogContent>
       </Dialog>
+      {/* Incoming Party Invite Notification */}
+      {(() => {
+        const pendingInvite = state?.partyInvites?.find(
+          (inv) => inv.toUserId === user || inv.toCharId === active?.id
+        );
+        if (!pendingInvite) return null;
+        return (
+          <div className="fixed top-12 left-1/2 -translate-x-1/2 z-50 bg-gradient-to-r from-zinc-950 via-emerald-950 to-zinc-950 border-2 border-emerald-500 rounded-2xl p-3 shadow-[0_0_30px_rgba(16,185,129,0.6)] flex items-center gap-3 backdrop-blur-xl animate-fade-in pointer-events-auto">
+            <div className="flex items-center gap-2">
+              <Shield className="text-emerald-400 animate-pulse shrink-0" size={20} />
+              <span className="text-xs sm:text-sm font-serif font-black text-amber-200">
+                ⚔️ <strong>{pendingInvite.fromCharName}</strong> convidou você para o grupo!
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={async () => {
+                  await action({ action: 'partyAccept', inviteId: pendingInvite.id });
+                }}
+                className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-black font-black text-xs rounded-xl shadow cursor-pointer transition-all active:scale-95"
+              >
+                Aceitar
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  await action({ action: 'partyDecline', inviteId: pendingInvite.id });
+                }}
+                className="px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold text-xs rounded-xl border border-zinc-600 cursor-pointer transition-all"
+              >
+                Recusar
+              </button>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Interactive Player Action Dialog */}
+      {interactingPlayer && (
+        <Dialog open={Boolean(interactingPlayer)} onOpenChange={(open) => !open && setInteractingPlayer(null)}>
+          <DialogContent className="max-w-md bg-gradient-to-b from-[#141914] via-[#0f120f] to-[#0a0d0a] border border-amber-500/50 text-zinc-100 shadow-[0_0_50px_rgba(0,0,0,0.9)] p-0 overflow-hidden rounded-2xl">
+            <DialogHeader className="p-4 bg-gradient-to-r from-amber-950/60 to-zinc-950 border-b border-zinc-800">
+              <DialogTitle className="font-serif font-black text-amber-200 text-lg flex items-center gap-2">
+                <Users size={18} className="text-amber-400" />
+                <span>{interactingPlayer.name}</span>
+                <span className="text-xs font-mono font-normal text-zinc-400 px-2 py-0.5 rounded-full bg-zinc-900 border border-zinc-800">
+                  Nível {interactingPlayer.level}
+                </span>
+              </DialogTitle>
+              <DialogDescription className="text-xs text-zinc-400">
+                {interactingPlayer.species} • {interactingPlayer.className} • {interactingPlayer.background || 'Aventureiro de Valdoria'}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="p-4 space-y-4">
+              {/* Quick Stats Grid */}
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="p-2 rounded-xl bg-zinc-900/80 border border-zinc-800">
+                  <span className="text-[10px] text-zinc-400 block font-mono">PONTOS DE VIDA</span>
+                  <span className="text-sm font-bold text-emerald-400">{interactingPlayer.hp}/{interactingPlayer.maxHp} PV</span>
+                </div>
+                <div className="p-2 rounded-xl bg-zinc-900/80 border border-zinc-800">
+                  <span className="text-[10px] text-zinc-400 block font-mono">CLASSE DE ARMADURA</span>
+                  <span className="text-sm font-bold text-amber-300">{interactingPlayer.ac} CA</span>
+                </div>
+                <div className="p-2 rounded-xl bg-zinc-900/80 border border-zinc-800">
+                  <span className="text-[10px] text-zinc-400 block font-mono">DESLOCAMENTO</span>
+                  <span className="text-sm font-bold text-sky-400">{interactingPlayer.speed || 9}m</span>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-col gap-2 pt-1">
+                {(!active?.partyId || !interactingPlayer.partyId || active.partyId !== interactingPlayer.partyId) ? (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const target = interactingPlayer;
+                      setInteractingPlayer(null);
+                      await action({ action: 'partyInvite', character: selected, targetCharId: target.id });
+                    }}
+                    className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-emerald-600 via-green-500 to-emerald-600 hover:from-emerald-500 hover:to-green-400 text-black font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95 cursor-pointer"
+                  >
+                    <Users size={16} className="stroke-[2.5]" />
+                    <span>Convidar para Grupo (Party)</span>
+                  </button>
+                ) : (
+                  <div className="p-2 rounded-xl bg-sky-950/40 border border-sky-600/40 text-sky-300 text-xs text-center font-mono">
+                    🛡️ Este aventureiro já é membro do seu grupo!
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const target = interactingPlayer;
+                    setInteractingPlayer(null);
+                    setMessage(`/c Olá ${target.name}! `);
+                  }}
+                  className="w-full py-2 px-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-200 border border-zinc-700 text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer"
+                >
+                  <MessageSquare size={15} className="text-amber-400" />
+                  <span>Enviar Mensagem no Chat</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const target = interactingPlayer;
+                    setInteractingPlayer(null);
+                    setCharacter(structuredClone(target));
+                  }}
+                  className="w-full py-2 px-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-200 border border-zinc-700 text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer"
+                >
+                  <BookOpen size={15} className="text-purple-400" />
+                  <span>Inspecionar Ficha D&D 5e</span>
+                </button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
       {/* 5e Character Creator & Builder Modal */}
       {showCharacterCreator && (
         <CharacterCreator
@@ -2257,6 +2591,26 @@ function Library() {
 
   return (
     <>
+      {/* Onboarding Banner for Compendium */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-blue-950/40 via-[#10141b] to-[#121612] border border-sky-500/40 shadow-xl gap-3 mb-3">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-sky-500/10 border border-sky-500/40 flex items-center justify-center text-sky-300 shrink-0 shadow">
+            <BookOpen size={22} />
+          </div>
+          <div>
+            <h2 className="text-base font-serif font-black text-sky-200">
+              Compêndio & Biblioteca Oficial SRD 5.2.1
+            </h2>
+            <p className="text-xs text-zinc-300 max-w-xl leading-relaxed">
+              Consulte todas as regras, magias, monstros e equipamentos oficiais das regras 2024 de D&D 5e. Utilize a busca rápida ou filtre por categoria.
+            </p>
+          </div>
+        </div>
+        <a className="gold-button text-xs py-2 px-3 shrink-0 flex items-center gap-1 cursor-pointer" href="/SRD-5.2.1.pdf" target="_blank" rel="noreferrer">
+          <span>PDF Oficial Completo</span> <ArrowUpRight size={14} />
+        </a>
+      </div>
+
       <div className="library-toolbar">
         <Pick
           value={category}

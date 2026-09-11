@@ -37,6 +37,9 @@ export async function GET(req: NextRequest) {
     await db.prepare('DELETE FROM rooms WHERE owner=?').bind('local-hero').run();
 
     const res = NextResponse.redirect(new URL('/?wiped=1', req.url));
+    if (user?.cookieHeaderValue) {
+      res.headers.set('Set-Cookie', user.cookieHeaderValue);
+    }
     return res;
   } catch {
     const res = NextResponse.redirect(new URL('/?wiped=1', req.url));

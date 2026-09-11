@@ -124,6 +124,24 @@ async function run() {
     hero.hp = hero.maxHp;
   }
 
+  // Move hero adjacent to enemy for tactical melee range
+  const moveRes = await fetch(base + '/api/game', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      room: room.id,
+      version: room.version,
+      action: 'move',
+      character: hero.id,
+      x: initialEnemy.x > 0 ? initialEnemy.x - 1 : initialEnemy.x + 1,
+      y: initialEnemy.y
+    })
+  });
+  if (moveRes.ok) {
+    const moveData = await moveRes.json() as any;
+    room = moveData.room;
+  }
+
   // 2. Perform Attack on the live server
   const attackRes = await fetch(base + '/api/game', {
     method: 'POST',

@@ -36,6 +36,8 @@ interface GamemasterSidebarProps {
   aiChoices?: string[];
   busy?: boolean;
   onClose?: () => void;
+  onSendChat?: (text: string) => void;
+  isMmoRoom?: boolean;
 }
 
 export function GamemasterSidebar({
@@ -58,8 +60,11 @@ export function GamemasterSidebar({
     'Conversar com os aldeões da vila'
   ],
   busy,
-  onClose
+  onClose,
+  onSendChat,
+  isMmoRoom
 }: GamemasterSidebarProps) {
+  const [sidebarTab, setSidebarTab] = useState<'gm' | 'chat'>('gm');
   const [customPrompt, setCustomPrompt] = useState('');
   const [diceFormula, setDiceFormula] = useState(lastRollResult?.formula || '1d20+3');
   const [displayedRoll, setDisplayedRoll] = useState(lastRollResult?.total || 7);
@@ -109,10 +114,25 @@ export function GamemasterSidebar({
     onNarrateMessage(choiceText);
   };
 
+  const chatLogs = logs.filter((l) => l.kind === 'player' || l.text.startsWith('💬') || l.text.startsWith('🎉'));
+
   const handleSendPrompt = (e: React.FormEvent) => {
     e.preventDefault();
     if (!customPrompt.trim() || busy) return;
     const text = customPrompt.trim();
+
+    // If on chat tab or typed /c /chat, send as real-time MMO chat
+    if (sidebarTab === 'chat' || text.startsWith('/c ') || text.startsWith('/chat ') || text.startsWith('/falar ')) {
+      const cleanText = text.replace(/^\/(c|chat|falar)\s+/i, '');
+      if (onSendChat) {
+        onSendChat(cleanText);
+      } else {
+        onNarrateMessage(`[Chat]: ${cleanText}`);
+      }
+      setCustomPrompt('');
+      return;
+    }
+
     handleExecuteChoice(text);
     setCustomPrompt('');
   };
@@ -154,7 +174,7 @@ export function GamemasterSidebar({
         </div>
 
         {/* GM Portrait Banner */}
-        <div className="relative w-full h-20 sm:h-24 rounded-xl overflow-hidden border border-zinc-700/80 bg-gradient-to-b from-stone-950 via-zinc-900 to-black shadow-inner group">
+        <div className="relative w-full h-16 sm:h-20 rounded-xl overflow-hidden border border-zinc-700/80 bg-gradient-to-b from-stone-950 via-zinc-900 to-black shadow-inner group">
           <img
             src="/gamemaster_skeleton.jpg"
             alt="Gamemaster"
@@ -168,128 +188,210 @@ export function GamemasterSidebar({
         </div>
       </div>
 
-      {/* ═══ MODULE 2: SPACIOUS NARRATIVE CHAT STREAM WITH AUTO-SCROLL ═══ */}
-      <div className="flex-1 min-h-[160px] p-3 overflow-y-auto space-y-2.5 bg-[#090d09] border-b border-zinc-800/80">
-        <span className="text-[10px] uppercase font-bold tracking-widest text-amber-400/80 block">
-          Crônica da Aventura:
-        </span>
-        {logs.length === 0 ? (
-          <p className="text-xs text-zinc-400 italic">A aventura aguarda suas decisões. Diga algo ao Mestre ou realize uma ação no tabuleiro.</p>
-        ) : (
-          logs.slice(-25).map((log, idx) => (
-            <div
-              key={idx}
-              className={`p-2 rounded-xl text-xs leading-relaxed transition-all shadow-sm ${
-                log.kind === 'gm'
-                  ? 'bg-[#151c15] border border-amber-900/40 text-amber-100 font-serif'
-                  : log.kind === 'roll'
-                  ? 'bg-zinc-900/90 border border-zinc-700/80 text-cyan-200 font-mono text-[11px]'
-                  : 'bg-zinc-950 border border-zinc-800 text-zinc-200'
-              }`}
-            >
-              <div className="flex items-center justify-between text-[9px] text-zinc-500 font-mono mb-1">
-                <span className="uppercase font-bold tracking-wider text-amber-400/80">
-                  {log.kind === 'gm' ? '📜 Mestre' : log.kind === 'roll' ? '🎲 Rolagem' : '👤 Jogador'}
-                </span>
-                <span>{new Date(log.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-              </div>
-              <p className="whitespace-pre-wrap">{log.text}</p>
-            </div>
-          ))
-        )}
-        <div ref={messagesEndRef} />
-      </div>
-
-      {/* ═══ MODULE 3: FULL-SENTENCE READABLE QUICK CHOICES (WITH DIRECT BOARD EXECUTION) ═══ */}
-      <div className="p-2.5 bg-[#0e140e] border-b border-zinc-800/80 space-y-2 shrink-0">
-        <div className="flex items-center justify-between">
-          <span className="text-[10px] uppercase font-bold tracking-wider text-amber-400 flex items-center gap-1">
-            <Sparkles size={11} />
-            <span>Opções Sugeridas (Disparam Ações):</span>
-          </span>
-          <span className="text-[9px] text-zinc-500 font-mono">1-Clique</span>
-        </div>
-
-        <div className="flex flex-col gap-1.5 max-h-36 overflow-y-auto pr-1">
-          {/* Quick Combat Shortcuts if in combat */}
-          {combat && isHeroTurn && (
-            <div className="grid grid-cols-2 gap-1 mb-0.5">
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => handleExecuteChoice(`Atacar ${currentEnemy ? currentEnemy.name : 'o inimigo'}!`)}
-                className="flex items-center gap-1 p-1.5 rounded-lg bg-red-950/80 hover:bg-red-900 border border-red-700/80 text-red-200 text-xs font-bold transition-all shadow"
-              >
-                <Swords size={12} className="text-red-400 shrink-0" />
-                <span>Atacar Alvo</span>
-              </button>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => handleExecuteChoice('Beber poção de cura e restaurar pontos de vida.')}
-                className="flex items-center gap-1 p-1.5 rounded-lg bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-700/80 text-emerald-200 text-xs font-bold transition-all shadow"
-              >
-                <Heart size={12} className="text-emerald-400 shrink-0" />
-                <span>Beber Poção</span>
-              </button>
-            </div>
+      {/* ═══ TAB SWITCHER: MESTRE & CRÔNICA vs CHAT DA GUILDA ═══ */}
+      <div className="flex border-b border-zinc-800 bg-[#0d120d] px-3 pt-1.5 gap-2 shrink-0">
+        <button
+          type="button"
+          onClick={() => setSidebarTab('gm')}
+          className={`flex items-center gap-1.5 pb-1.5 px-2 text-xs font-bold transition-all border-b-2 cursor-pointer ${
+            sidebarTab === 'gm'
+              ? 'text-amber-300 border-amber-400 font-serif'
+              : 'text-zinc-400 border-transparent hover:text-zinc-200'
+          }`}
+        >
+          <Flame size={13} className={sidebarTab === 'gm' ? 'text-amber-400' : 'text-zinc-500'} />
+          <span>Mestre & Crônica</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setSidebarTab('chat')}
+          className={`flex items-center gap-1.5 pb-1.5 px-2 text-xs font-bold transition-all border-b-2 cursor-pointer relative ${
+            sidebarTab === 'chat'
+              ? 'text-emerald-300 border-emerald-400'
+              : 'text-zinc-400 border-transparent hover:text-zinc-200'
+          }`}
+        >
+          <MessageSquare size={13} className={sidebarTab === 'chat' ? 'text-emerald-400' : 'text-zinc-500'} />
+          <span>Chat MMO</span>
+          {chatLogs.length > 0 && (
+            <span className="text-[10px] bg-emerald-950 text-emerald-300 px-1.5 py-0.2 rounded-full border border-emerald-700/60 font-mono">
+              {chatLogs.length}
+            </span>
           )}
-
-          {/* AI Narrative Context Choices (Full Sentence, Not Truncated) */}
-          {aiChoices.map((choice, i) => (
-            <button
-              key={i}
-              type="button"
-              disabled={busy}
-              onClick={() => handleExecuteChoice(choice)}
-              className="text-left text-xs bg-zinc-900/90 hover:bg-amber-950/40 border border-zinc-700/80 hover:border-amber-500/80 text-zinc-200 hover:text-amber-200 p-2 rounded-xl transition-all flex items-center justify-between group shadow-sm active:scale-98 whitespace-normal break-words leading-relaxed"
-            >
-              <span className="flex-1">{choice}</span>
-              <ChevronRight size={14} className="text-amber-400 shrink-0 ml-1.5 group-hover:translate-x-0.5 transition-transform" />
-            </button>
-          ))}
-        </div>
-
-        {/* Mini Dice Roll Strip */}
-        <div className="pt-1 border-t border-zinc-800/60 flex items-center justify-between gap-1">
-          <button
-            type="button"
-            onClick={() => handleQuickRoll('d20')}
-            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-amber-950/40 border border-zinc-700 text-[11px] font-mono font-bold text-amber-300 hover:border-amber-400 transition-colors"
-          >
-            <Dices size={13} className="text-amber-400" />
-            <span>1d20: {displayedRoll}</span>
-          </button>
-          <div className="flex items-center gap-1">
-            {['d4', 'd6', 'd8', 'd10', 'd12'].map((d) => (
-              <button
-                key={d}
-                type="button"
-                onClick={() => handleQuickRoll(d)}
-                className="px-1.5 py-0.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-700/80 text-[10px] font-mono text-zinc-300 transition-colors"
-              >
-                {d}
-              </button>
-            ))}
-          </div>
-        </div>
+          {isMmoRoom && (
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse ml-0.5" title="Mundo MMO Conectado" />
+          )}
+        </button>
       </div>
 
-      {/* ═══ MODULE 4: TEXT INPUT TO TALK TO GM / EXECUTE INTENTS ═══ */}
+      {sidebarTab === 'chat' ? (
+        /* ═══ MMO CHAT STREAM ═══ */
+        <div className="flex-1 min-h-[160px] p-3 overflow-y-auto space-y-2.5 bg-[#090d09] border-b border-zinc-800/80">
+          <div className="flex items-center justify-between pb-1 border-b border-zinc-900">
+            <span className="text-[10px] uppercase font-bold tracking-widest text-emerald-400/90 flex items-center gap-1">
+              <Users size={11} />
+              <span>Chat Global da Instância MMO:</span>
+            </span>
+            <span className="text-[9px] text-zinc-500 font-mono">Tempo Real</span>
+          </div>
+          {chatLogs.length === 0 ? (
+            <div className="p-4 text-center text-xs text-zinc-400 italic">
+              Nenhuma mensagem no chat ainda. Diga um 'olá' para todos os aventureiros da instância!
+            </div>
+          ) : (
+            chatLogs.slice(-40).map((log, idx) => (
+              <div
+                key={idx}
+                className="p-2.5 rounded-xl bg-zinc-950/90 border border-emerald-900/40 text-xs shadow-sm"
+              >
+                <div className="flex items-center justify-between text-[9px] text-zinc-500 font-mono mb-1">
+                  <span className="font-bold text-emerald-400">
+                    {log.text.startsWith('💬') ? log.text.split(':')[0] : '💬 Jogador'}
+                  </span>
+                  <span>{new Date(log.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                </div>
+                <p className="text-zinc-200 font-sans leading-relaxed">
+                  {log.text.startsWith('💬') ? log.text.split(':').slice(1).join(':').replace(/^\s*"/, '').replace(/"\s*$/, '') : log.text}
+                </p>
+              </div>
+            ))
+          )}
+          <div ref={messagesEndRef} />
+        </div>
+      ) : (
+        <>
+          {/* ═══ MODULE 2: SPACIOUS NARRATIVE CHAT STREAM WITH AUTO-SCROLL ═══ */}
+          <div className="flex-1 min-h-[160px] p-3 overflow-y-auto space-y-2.5 bg-[#090d09] border-b border-zinc-800/80">
+            <span className="text-[10px] uppercase font-bold tracking-widest text-amber-400/80 block">
+              Crônica da Aventura:
+            </span>
+            {logs.length === 0 ? (
+              <p className="text-xs text-zinc-400 italic">A aventura aguarda suas decisões. Diga algo ao Mestre ou realize uma ação no tabuleiro.</p>
+            ) : (
+              logs.slice(-25).map((log, idx) => (
+                <div
+                  key={idx}
+                  className={`p-2 rounded-xl text-xs leading-relaxed transition-all shadow-sm ${
+                    log.kind === 'gm'
+                      ? 'bg-[#151c15] border border-amber-900/40 text-amber-100 font-serif'
+                      : log.kind === 'roll'
+                      ? 'bg-zinc-900/90 border border-zinc-700/80 text-cyan-200 font-mono text-[11px]'
+                      : 'bg-zinc-950 border border-zinc-800 text-zinc-200'
+                  }`}
+                >
+                  <div className="flex items-center justify-between text-[9px] text-zinc-500 font-mono mb-1">
+                    <span className="uppercase font-bold tracking-wider text-amber-400/80">
+                      {log.kind === 'gm' ? '📜 Mestre' : log.kind === 'roll' ? '🎲 Rolagem' : '👤 Jogador'}
+                    </span>
+                    <span>{new Date(log.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                  </div>
+                  <p className="whitespace-pre-wrap">{log.text}</p>
+                </div>
+              ))
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* ═══ MODULE 3: FULL-SENTENCE READABLE QUICK CHOICES (WITH DIRECT BOARD EXECUTION) ═══ */}
+          <div className="p-2.5 bg-[#0e140e] border-b border-zinc-800/80 space-y-2 shrink-0">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] uppercase font-bold tracking-wider text-amber-400 flex items-center gap-1">
+                <Sparkles size={11} />
+                <span>Opções Sugeridas (Disparam Ações):</span>
+              </span>
+              <span className="text-[9px] text-zinc-500 font-mono">1-Clique</span>
+            </div>
+
+            <div className="flex flex-col gap-1.5 max-h-36 overflow-y-auto pr-1">
+              {/* Quick Combat Shortcuts if in combat */}
+              {combat && isHeroTurn && (
+                <div className="grid grid-cols-2 gap-1 mb-0.5">
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => handleExecuteChoice(`Atacar ${currentEnemy ? currentEnemy.name : 'o inimigo'}!`)}
+                    className="flex items-center gap-1 p-1.5 rounded-lg bg-red-950/80 hover:bg-red-900 border border-red-700/80 text-red-200 text-xs font-bold transition-all shadow cursor-pointer"
+                  >
+                    <Swords size={12} className="text-red-400 shrink-0" />
+                    <span>Atacar Alvo</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => handleExecuteChoice('Beber poção de cura e restaurar pontos de vida.')}
+                    className="flex items-center gap-1 p-1.5 rounded-lg bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-700/80 text-emerald-200 text-xs font-bold transition-all shadow cursor-pointer"
+                  >
+                    <Heart size={12} className="text-emerald-400 shrink-0" />
+                    <span>Beber Poção</span>
+                  </button>
+                </div>
+              )}
+
+              {/* AI Narrative Context Choices (Full Sentence, Not Truncated) */}
+              {aiChoices.map((choice, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => handleExecuteChoice(choice)}
+                  className="text-left text-xs bg-zinc-900/90 hover:bg-amber-950/40 border border-zinc-700/80 hover:border-amber-500/80 text-zinc-200 hover:text-amber-200 p-2 rounded-xl transition-all flex items-center justify-between group shadow-sm active:scale-98 whitespace-normal break-words leading-relaxed cursor-pointer"
+                >
+                  <span className="flex-1">{choice}</span>
+                  <ChevronRight size={14} className="text-amber-400 shrink-0 ml-1.5 group-hover:translate-x-0.5 transition-transform" />
+                </button>
+              ))}
+            </div>
+
+            {/* Mini Dice Roll Strip */}
+            <div className="pt-1 border-t border-zinc-800/60 flex items-center justify-between gap-1">
+              <button
+                type="button"
+                onClick={() => handleQuickRoll('d20')}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-amber-950/40 border border-zinc-700 text-[11px] font-mono font-bold text-amber-300 hover:border-amber-400 transition-colors cursor-pointer"
+              >
+                <Dices size={13} className="text-amber-400" />
+                <span>1d20: {displayedRoll}</span>
+              </button>
+              <div className="flex items-center gap-1">
+                {['d4', 'd6', 'd8', 'd10', 'd12'].map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => handleQuickRoll(d)}
+                    className="px-1.5 py-0.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-700/80 text-[10px] font-mono text-zinc-300 transition-colors cursor-pointer"
+                  >
+                    {d}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ═══ MODULE 4: TEXT INPUT TO TALK TO GM / EXECUTE INTENTS OR CHAT ═══ */}
       <div className="p-2.5 border-t border-zinc-800/80 bg-[#0c100c]/95 shrink-0">
         <form onSubmit={handleSendPrompt} className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-zinc-950 border border-zinc-700/80 focus-within:border-amber-400 transition-colors shadow-inner">
           <input
             type="text"
             value={customPrompt}
             onChange={(e) => setCustomPrompt(e.target.value)}
-            placeholder="Fale com a Mestre (ex: 'Quero atacar a sentinela')..."
+            placeholder={
+              sidebarTab === 'chat'
+                ? 'Enviar mensagem no chat global do MMO...'
+                : 'Fale com a Mestre (ex: "Quero atacar") ou digite /c para chat...'
+            }
             className="flex-1 bg-transparent text-xs text-zinc-200 placeholder-zinc-500 outline-none border-none py-1"
           />
           <button
             type="submit"
             disabled={busy || !customPrompt.trim()}
-            className="p-1.5 rounded-lg bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 disabled:opacity-40 text-black font-bold transition-all shadow"
-            title="Enviar ação"
+            className={`p-1.5 rounded-lg font-bold transition-all shadow cursor-pointer ${
+              sidebarTab === 'chat'
+                ? 'bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white'
+                : 'bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-black'
+            } disabled:opacity-40`}
+            title={sidebarTab === 'chat' ? 'Enviar mensagem no chat' : 'Enviar ação'}
           >
             <Send size={13} />
           </button>

@@ -35,7 +35,8 @@ import {
   isGridTileWalkable,
   findPathAStar,
   calculateMovementBudget,
-  type Point
+  type Point,
+  type CollisionPolygon
 } from '@/lib/collision-system';
 
 // Map action/weapon/spell names to VFX CSS class
@@ -124,6 +125,7 @@ interface TacticalMapProps {
   projectiles?: ProjectileVfx[];
   movementUsed?: number;
   biome?: 'village' | 'forest' | 'dungeon';
+  onInteractPlayer?: (hero: Character) => void;
 }
 
 export function TacticalMap({
@@ -149,7 +151,8 @@ export function TacticalMap({
   onTalkNpc,
   projectiles,
   movementUsed = 0,
-  biome
+  biome = 'village',
+  onInteractPlayer
 }: TacticalMapProps) {
   const [fogOfWar, setFogOfWar] = useState(true);
   const [zoomScale, setZoomScale] = useState(1);
@@ -221,10 +224,8 @@ export function TacticalMap({
     }
   }, [characters, enemies]);
 
-  const gridSize = battlemap ? battlemap.width : dungeon ? dungeon.width : 8;
-  const activeHero = characters.find((c) => c.id === selectedHeroId) || characters[0];
-
-  const [debugCollisions, setDebugCollisions] = useState(false);
+  const [customGridSize, setCustomGridSize] = useState<number | null>(null);
+  const [customZonesLoaded, setCustomZonesLoaded] = useState<boolean>(false);
 
   // Determine current active biome
   const currentBiome: 'village' | 'forest' | 'dungeon' =
@@ -233,6 +234,60 @@ export function TacticalMap({
     (locationName.toLowerCase().includes('floresta') ? 'forest' : locationName.toLowerCase().includes('dungeon') || locationName.toLowerCase().includes('catacumba') ? 'dungeon' : 'village');
 
   const collisionProfile = MAP_COLLISION_PROFILES[currentBiome] || MAP_COLLISION_PROFILES.village;
+  const gridSize = customGridSize || collisionProfile.gridSize || (battlemap ? battlemap.width : dungeon ? dungeon.width : 8);
+  const activeHero = characters.find((c) => c.id === selectedHeroId) || characters[0];
+
+  const [debugCollisions, setDebugCollisions] = useState(false);
+
+  // Custom zones from map editor (loads from localStorage, API, or fallback collision profile)
+  const [customMapZones, setCustomMapZones] = useState<CollisionPolygon[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem(`lume_map_zones_${currentBiome}`);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          const zones = Array.isArray(parsed) ? parsed : parsed.zones;
+          if (zones && Array.isArray(zones)) return zones;
+        }
+      } catch {}
+    }
+    return MAP_COLLISION_PROFILES[currentBiome]?.customZones || [];
+  });
+
+  useEffect(() => {
+    const handleMapUpdated = (e: any) => {
+      if (e.detail?.zones && Array.isArray(e.detail.zones)) {
+        setCustomMapZones(e.detail.zones);
+        setCustomZonesLoaded(true);
+        if (e.detail.gridSize) setCustomGridSize(Number(e.detail.gridSize));
+      } else if (Array.isArray(e.detail)) {
+        setCustomMapZones(e.detail);
+        setCustomZonesLoaded(true);
+      }
+    };
+    window.addEventListener('lume-map-updated', handleMapUpdated);
+
+    fetch(`/api/map-collision?biome=${currentBiome}`)
+      .then((res) => res.json())
+      .then((data: any) => {
+        if (data?.zones && Array.isArray(data.zones)) {
+          setCustomMapZones(data.zones);
+          setCustomZonesLoaded(true);
+        }
+        if (data?.gridSize) {
+          setCustomGridSize(Number(data.gridSize));
+        }
+      })
+      .catch(() => {});
+
+    return () => window.removeEventListener('lume-map-updated', handleMapUpdated);
+  }, [currentBiome]);
+
+  const activeZones = useMemo(() => {
+    if (customZonesLoaded) return customMapZones;
+    if (customMapZones.length > 0) return customMapZones;
+    return MAP_COLLISION_PROFILES[currentBiome]?.customZones || [];
+  }, [customZonesLoaded, customMapZones, currentBiome]);
 
   // Impactful Exploration -> Combat transition banner
   const [combatTransition, setCombatTransition] = useState(false);
@@ -268,18 +323,73 @@ export function TacticalMap({
     return set;
   }, [characters, enemies, activeHero?.id]);
 
+  // Fluid MMO-like Walk State outside combat
+  const [walkingHeroPos, setWalkingHeroPos] = useState<{ id: string; x: number; y: number } | null>(null);
+  const walkTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (walkTimerRef.current) clearInterval(walkTimerRef.current);
+    };
+  }, []);
+
+  const currentHeroX = (walkingHeroPos && walkingHeroPos.id === activeHero?.id) ? walkingHeroPos.x : activeHero?.x ?? 0;
+  const currentHeroY = (walkingHeroPos && walkingHeroPos.id === activeHero?.id) ? walkingHeroPos.y : activeHero?.y ?? 0;
+
+  // Seamlessly keep walkingHeroPos until server characters coordinate catches up
+  useEffect(() => {
+    if (walkingHeroPos) {
+      const char = characters.find((c) => c.id === walkingHeroPos.id);
+      if (char && char.x === walkingHeroPos.x && char.y === walkingHeroPos.y) {
+        setWalkingHeroPos(null);
+      }
+    }
+  }, [characters, walkingHeroPos]);
+
+  const displayHeroes = useMemo(() => {
+    if (!walkingHeroPos) return characters;
+    return characters.map((c) => (c.id === walkingHeroPos.id ? { ...c, x: walkingHeroPos.x, y: walkingHeroPos.y } : c));
+  }, [characters, walkingHeroPos]);
+
+  const handleFluidWalk = (heroId: string, path: Point[]) => {
+    if (path.length <= 1) return;
+    if (walkTimerRef.current) {
+      clearInterval(walkTimerRef.current);
+      walkTimerRef.current = null;
+    }
+    let step = 0;
+    // Human neutral walking cadence: 260ms per tile (~3.8 steps/sec)
+    const stepInterval = 260;
+    walkTimerRef.current = setInterval(() => {
+      step++;
+      if (step < path.length) {
+        setWalkingHeroPos({ id: heroId, x: path[step].x, y: path[step].y });
+      } else {
+        if (walkTimerRef.current) {
+          clearInterval(walkTimerRef.current);
+          walkTimerRef.current = null;
+        }
+        const finalDest = path[path.length - 1];
+        // RETAIN final destination in state so token NEVER rubberbands back
+        setWalkingHeroPos({ id: heroId, x: finalDest.x, y: finalDest.y });
+        onMoveHero(heroId, finalDest.x, finalDest.y);
+      }
+    }, stepInterval);
+  };
+
   // A* calculated path from active hero to hovered square navigating obstacles
   const activePath = useMemo(() => {
     if (!hoveredSquare || !activeHero || targetingAction) return [];
-    if (activeHero.x === hoveredSquare.x && activeHero.y === hoveredSquare.y) return [];
+    if (currentHeroX === hoveredSquare.x && currentHeroY === hoveredSquare.y) return [];
     return findPathAStar(
-      { x: activeHero.x, y: activeHero.y },
+      { x: currentHeroX, y: currentHeroY },
       hoveredSquare,
       currentBiome,
       gridSize,
-      occupiedTiles
+      occupiedTiles,
+      activeZones
     );
-  }, [activeHero, hoveredSquare, targetingAction, currentBiome, gridSize, occupiedTiles]);
+  }, [activeHero, currentHeroX, currentHeroY, hoveredSquare, targetingAction, currentBiome, gridSize, occupiedTiles, activeZones]);
 
   const pathStepCount = activePath.length > 0 ? activePath.length - 1 : 0;
   const pathMeters = (pathStepCount * 1.5).toFixed(1);
@@ -288,7 +398,7 @@ export function TacticalMap({
   // Calculate vision / illumination around heroes (radius = 5 squares)
   const isIlluminated = (x: number, y: number) => {
     if (!fogOfWar) return true;
-    return characters.some((c) => {
+    return displayHeroes.some((c) => {
       const dist = Math.max(Math.abs(c.x - x), Math.abs(c.y - y));
       return dist <= 5;
     });
@@ -434,7 +544,7 @@ export function TacticalMap({
                 • Rota: {pathMeters}m ({pathStepCount}q)
                 {isCombat && ` • ${moveBudget.remainingMeters}m restantes`}
               </span>
-            ) : !isGridTileWalkable(currentBiome, hoveredSquare.x, hoveredSquare.y, gridSize) ? (
+            ) : !isGridTileWalkable(currentBiome, hoveredSquare.x, hoveredSquare.y, gridSize, activeZones) ? (
               <span className="text-red-400 font-semibold">• Obstáculo / Intransponível</span>
             ) : null}
           </div>
@@ -465,13 +575,13 @@ export function TacticalMap({
               transformOrigin: 'center center',
               transition: isDragging ? 'none' : 'transform 0.15s cubic-bezier(0.16, 1, 0.3, 1)'
             }}
-            className="relative w-full h-full aspect-square max-w-full max-h-full mx-auto touch-manipulation pointer-events-auto select-none rounded-2xl overflow-hidden shadow-2xl border border-stone-800/80"
+            className="relative w-full max-w-6xl aspect-[16/9] mx-auto touch-manipulation pointer-events-auto select-none rounded-2xl overflow-hidden shadow-2xl border border-stone-800/80"
           >
             {/* 1. Base Illustrated Map Artwork */}
             <img
               src={collisionProfile.imageSrc}
               alt="Mapa Ilustrado"
-              className="absolute inset-0 w-full h-full object-cover select-none pointer-events-none z-0"
+              className="absolute inset-0 w-full h-full object-fill select-none pointer-events-none z-0"
             />
 
             {/* 2. Ambient Lighting & Atmospheric Fantasy Vignette */}
@@ -486,51 +596,47 @@ export function TacticalMap({
               {/* Collision Debug Polygons (When Debug Mode is Enabled) */}
               {debugCollisions && (
                 <g opacity="0.85">
-                  {collisionProfile.obstacles.map((obs) => {
-                    const pointsStr = obs.points.map(([px, py]) => `${px * 100},${py * 100}`).join(' ');
-                    const firstPoint = obs.points[0];
+                  {activeZones.map((zone) => {
+                    const pointsStr = zone.points.map(([px, py]) => `${px * 100},${py * 100}`).join(' ');
+                    const firstPoint = zone.points[0];
+                    let stroke = '#ef4444';
+                    let fill = 'rgba(239, 68, 68, 0.35)';
+                    let labelColor = '#fca5a5';
+                    if (zone.type === 'agua' || zone.type === 'water') {
+                      stroke = '#0ea5e9';
+                      fill = 'rgba(14, 165, 233, 0.35)';
+                      labelColor = '#7dd3fc';
+                    } else if (zone.type === 'caminhavel' || zone.type === 'walkable') {
+                      stroke = '#22c55e';
+                      fill = 'rgba(34, 197, 94, 0.25)';
+                      labelColor = '#86efac';
+                    } else if (zone.type === 'porta') {
+                      stroke = '#f59e0b';
+                      fill = 'rgba(245, 158, 11, 0.4)';
+                      labelColor = '#fde68a';
+                    } else if (zone.type === 'ponte') {
+                      stroke = '#06b6d4';
+                      fill = 'rgba(6, 182, 212, 0.4)';
+                      labelColor = '#67e8f9';
+                    }
                     return (
-                      <g key={obs.id}>
+                      <g key={zone.id}>
                         <polygon
                           points={pointsStr}
-                          fill={obs.type === 'water' ? 'rgba(14, 165, 233, 0.35)' : 'rgba(239, 68, 68, 0.35)'}
-                          stroke={obs.type === 'water' ? '#0ea5e9' : '#ef4444'}
-                          strokeWidth="0.8"
-                          strokeDasharray="2 1"
+                          fill={fill}
+                          stroke={stroke}
+                          strokeWidth="0.7"
+                          strokeDasharray={zone.type === 'bloqueado' ? 'none' : '2 1'}
                         />
                         <text
                           x={firstPoint[0] * 100 + 1}
-                          y={firstPoint[1] * 100 + 4}
-                          fill="#fca5a5"
-                          fontSize="2.5"
+                          y={firstPoint[1] * 100 + 3.5}
+                          fill={labelColor}
+                          fontSize="2"
                           fontWeight="bold"
                           fontFamily="sans-serif"
                         >
-                          {obs.name}
-                        </text>
-                      </g>
-                    );
-                  })}
-                  {collisionProfile.walkableBridges?.map((bridge) => {
-                    const pointsStr = bridge.points.map(([px, py]) => `${px * 100},${py * 100}`).join(' ');
-                    const firstPoint = bridge.points[0];
-                    return (
-                      <g key={bridge.id}>
-                        <polygon
-                          points={pointsStr}
-                          fill="rgba(16, 185, 129, 0.45)"
-                          stroke="#10b981"
-                          strokeWidth="0.8"
-                        />
-                        <text
-                          x={firstPoint[0] * 100 + 1}
-                          y={firstPoint[1] * 100 + 4}
-                          fill="#6ee7b7"
-                          fontSize="2.5"
-                          fontWeight="bold"
-                          fontFamily="sans-serif"
-                        >
-                          {bridge.name} (Passagem)
+                          {zone.name}
                         </text>
                       </g>
                     );
@@ -602,7 +708,7 @@ export function TacticalMap({
 
               const isVillage = battlemap?.biome === 'village' || locationName.toLowerCase().includes('vila');
               const tileNpcs = isVillage ? (npcs || []).filter((n) => n.x === x && n.y === y) : [];
-              const tileHeroes = characters.filter((c) => c.x === x && c.y === y);
+              const tileHeroes = displayHeroes.filter((c) => c.x === x && c.y === y);
               const tileEnemies = enemies.filter((e) => e.x === x && e.y === y && e.hp > 0);
               const hasEntities = tileHeroes.length > 0 || tileEnemies.length > 0 || tileNpcs.length > 0;
 
@@ -613,7 +719,7 @@ export function TacticalMap({
               const tType = tile.type;
               const isCenterCampfire = x === Math.floor(gridSize / 2) && y === Math.floor(gridSize / 2);
 
-              const isWalkable = isGridTileWalkable(currentBiome, x, y, gridSize);
+              const isWalkable = isGridTileWalkable(currentBiome, x, y, gridSize, activeZones);
               const isOnActivePath = activePath.some((p) => p.x === x && p.y === y);
 
               // Translucent tactical cell styling over the illustrated map
@@ -646,11 +752,15 @@ export function TacticalMap({
                       }
                     } else if (tileNpcs.length > 0) {
                       const npc = tileNpcs[0];
-                      const dist = activeHero ? Math.max(Math.abs(activeHero.x - x), Math.abs(activeHero.y - y)) : 99;
+                      const dist = activeHero ? Math.max(Math.abs(currentHeroX - x), Math.abs(currentHeroY - y)) : 99;
                       if (dist <= 1) {
                         onTalkNpc?.(npc.id);
                       } else if (canMove && activeHero && isWalkable) {
-                        onMoveHero(activeHero.id, x, y);
+                        if (!isCombat && activePath.length > 1) {
+                          handleFluidWalk(activeHero.id, activePath);
+                        } else {
+                          onMoveHero(activeHero.id, x, y);
+                        }
                       }
                     } else if (tileEnemies.length > 0) {
                       setContextEnemy(tileEnemies[0]);
@@ -659,7 +769,13 @@ export function TacticalMap({
                       onInteractObject?.(tType, x, y);
                     } else if (canMove && activeHero && !hasEntities) {
                       if (isWalkable) {
-                        if (!isCombat || (pathStepCount > 0 && isPathAffordable)) {
+                        if (!isCombat) {
+                          if (activePath.length > 1) {
+                            handleFluidWalk(activeHero.id, activePath);
+                          } else {
+                            onMoveHero(activeHero.id, x, y);
+                          }
+                        } else if (pathStepCount > 0 && isPathAffordable) {
                           onMoveHero(activeHero.id, x, y);
                         }
                       }
@@ -782,9 +898,13 @@ export function TacticalMap({
                         key={hero.id}
                         onClick={(e) => {
                           e.stopPropagation();
-                          onSelectToken('hero', hero.id);
+                          if (onInteractPlayer && hero.id !== selectedHeroId) {
+                            onInteractPlayer(hero);
+                          } else {
+                            onSelectToken('hero', hero.id);
+                          }
                         }}
-                        className="relative z-10 w-7 h-7 sm:w-9 sm:h-9 rounded-full flex flex-col items-center justify-center cursor-pointer ring-2 ring-red-700 bg-gradient-to-br from-zinc-950 via-red-950 to-black grayscale opacity-80 token-smooth-move shadow-lg"
+                        className="relative z-10 w-7 h-7 sm:w-9 sm:h-9 rounded-full flex flex-col items-center justify-center cursor-pointer ring-2 ring-red-700 bg-gradient-to-br from-zinc-950 via-red-950 to-black grayscale opacity-80 token-smooth-glide shadow-lg"
                         title={`${hero.name} (INCONSCIENTE / 0 PV)`}
                       >
                         <span className="text-sm select-none drop-shadow">💀</span>
@@ -795,14 +915,18 @@ export function TacticalMap({
                     );
                   }
 
-                  return (
-                    <div
-                      key={hero.id}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onSelectToken('hero', hero.id);
-                      }}
-                      className={`relative z-10 w-7 h-7 sm:w-9 sm:h-9 rounded-full flex flex-col items-center justify-center cursor-pointer token-bob token-smooth-move ${
+                    return (
+                      <div
+                        key={hero.id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (onInteractPlayer && hero.id !== selectedHeroId) {
+                            onInteractPlayer(hero);
+                          } else {
+                            onSelectToken('hero', hero.id);
+                          }
+                        }}
+                      className={`relative z-10 w-7 h-7 sm:w-9 sm:h-9 rounded-full flex flex-col items-center justify-center cursor-pointer token-human-sway token-smooth-glide ${
                         isActiveTurn
                           ? 'ring-4 ring-amber-400 ring-offset-2 ring-offset-black scale-115 shadow-[0_0_25px_rgba(251,191,36,0.9)] token-selected-pulse'
                           : isSelected
@@ -881,7 +1005,7 @@ export function TacticalMap({
                           setContextEnemy(enemy);
                         }
                       }}
-                      className={`relative z-10 w-7 h-7 sm:w-9 sm:h-9 rounded-full flex flex-col items-center justify-center cursor-pointer token-smooth-move ${
+                      className={`relative z-10 w-7 h-7 sm:w-9 sm:h-9 rounded-full flex flex-col items-center justify-center cursor-pointer token-smooth-glide token-human-sway ${
                         isActiveTurn
                           ? 'ring-4 ring-red-500 ring-offset-2 ring-offset-black scale-115 shadow-[0_0_25px_rgba(239,68,68,0.9)] token-target-pulse'
                           : isSelected

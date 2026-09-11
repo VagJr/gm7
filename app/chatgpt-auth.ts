@@ -6,6 +6,8 @@ export type ChatGPTUser = {
   displayName: string;
   email: string;
   fullName: string | null;
+  isNewSession?: boolean;
+  cookieHeaderValue?: string;
 };
 
 const USER_ID_HEADER = "oai-authenticated-user-id";
@@ -38,12 +40,47 @@ export async function getChatGPTUser(): Promise<ChatGPTUser | null> {
     };
   }
 
-  // Fallback for Mobile LAN (e.g. 192.168.x.x), Local Dev or Standalone browsers
+  // Server-generated anonymous session identity per browser/client via Cookie
+  const rawCookie = requestHeaders.get("cookie") || "";
+  const match = /lume_session_id=([^;]+)/.exec(rawCookie);
+
+  if (match && match[1]?.trim()) {
+    const sessionId = decodeURIComponent(match[1].trim());
+    return {
+      userId: sessionId,
+      displayName: `Aventureiro ${sessionId.slice(-4).toUpperCase()}`,
+      email: `${sessionId}@lume.local`,
+      fullName: `Aventureiro ${sessionId.slice(-4).toUpperCase()}`,
+      isNewSession: false
+    };
+  }
+
+  // Legacy or test auth_session fallback
+  const authMatch = /auth_session=([^;]+)/.exec(rawCookie);
+  if (authMatch && authMatch[1]?.trim()) {
+    try {
+      const decoded = JSON.parse(Buffer.from(decodeURIComponent(authMatch[1].trim()), 'base64').toString('utf-8'));
+      if (decoded?.userId) {
+        return {
+          userId: String(decoded.userId),
+          displayName: String(decoded.displayName || 'Aventureiro'),
+          email: `${decoded.userId}@lume.local`,
+          fullName: String(decoded.displayName || 'Aventureiro'),
+          isNewSession: false
+        };
+      }
+    } catch {}
+  }
+
+  // Generate unique anonymous ID for this new browser session (Server Authoritative)
+  const newId = `anon_${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
   return {
-    userId: "local_hero",
-    displayName: "Herói de Valdoria",
-    email: "heroi@valdoria.local",
-    fullName: "Herói de Valdoria",
+    userId: newId,
+    displayName: `Aventureiro ${newId.slice(-4).toUpperCase()}`,
+    email: `${newId}@lume.local`,
+    fullName: `Aventureiro ${newId.slice(-4).toUpperCase()}`,
+    isNewSession: true,
+    cookieHeaderValue: `lume_session_id=${encodeURIComponent(newId)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000`
   };
 }
 

@@ -4,6 +4,11 @@ import { database } from '@/lib/room-db';
 import { GM_PROMPT } from '@/lib/gm-prompt';
 import pages from '@/lib/srd.json';
 import { entry, type State } from '@/lib/game-engine';
+import {
+  GM_CONTROLLED_TOOLS,
+  executeServerAuthoritativeGmTool,
+  type ToolExecutionResult
+} from '@/lib/gm-tools';
 
 const DEFAULT_GROQ_KEY = process.env.GROQ_API_KEY || '';
 
@@ -59,13 +64,28 @@ export async function POST(req: NextRequest) {
     let answer = '';
     let sources: { title: string; url: string }[] = [];
     let searchHtml = '';
+    const rawToolCalls: { name: string; args: Record<string, any> }[] = [];
+
+    // Optional direct structured tool call from test or client
+    if (a.testToolCall && typeof a.testToolCall.name === 'string') {
+      rawToolCalls.push({
+        name: a.testToolCall.name,
+        args: a.testToolCall.args || {}
+      });
+    }
 
     if (isGroq) {
       const groqSystemPrompt = `Você é o Mestre de Jogo de um RPG digital D&D 5e sombrio.
 REGRAS OBRIGATÓRIAS:
 1. Narre o impacto da ação em 1 a 2 parágrafos curtos, vívidos e cinematográficos.
 2. Não recalcule nem altere regras mecânicas; reaja ao que aconteceu.
-3. No fim da resposta, forneça exatamente 3 opções de ação rápida em linhas separadas iniciando com "[1]", "[2]" e "[3]".`;
+3. Use estritamente as 5 ferramentas controladas disponíveis quando a narrativa exigir:
+   - create_encounter: quando surgir um monstro ou ameaça para combate.
+   - create_npc: quando um novo personagem do mestre (NPC) for introduzido.
+   - grant_loot: quando o grupo receber recompensas, ouro, XP ou itens.
+   - set_combat_state: para iniciar ("start") ou finalizar ("end") um combate.
+   - update_quest: para atualizar o progresso ou concluir uma missão.
+4. No fim da resposta, forneça exatamente 3 opções de ação rápida em linhas separadas iniciando com "[1]", "[2]" e "[3]".`;
 
       const promptPayload = {
         contexto: a.actionContext || undefined,
@@ -94,6 +114,8 @@ REGRAS OBRIGATÓRIAS:
                 { role: 'system', content: groqSystemPrompt },
                 { role: 'user', content: JSON.stringify(promptPayload) }
               ],
+              tools: GM_CONTROLLED_TOOLS,
+              tool_choice: 'auto',
               temperature: 0.65,
               max_tokens: 450
             }),
@@ -101,14 +123,46 @@ REGRAS OBRIGATÓRIAS:
           });
 
           if (response.ok) {
-            const groqData = (await response.json()) as { choices?: { message?: { content?: string } }[] };
-            let rawContent = groqData.choices?.[0]?.message?.content || '';
+            const groqData = (await response.json()) as {
+              choices?: {
+                message?: {
+                  content?: string;
+                  tool_calls?: { function?: { name?: string; arguments?: string } }[];
+                };
+              }[];
+            };
+            const msg = groqData.choices?.[0]?.message;
+            let rawContent = msg?.content || '';
             if (rawContent.includes('</think>')) {
               rawContent = rawContent.split('</think>').pop() || '';
             } else if (rawContent.includes('<think>')) {
               rawContent = rawContent.replace(/<think>[\s\S]*$/gi, '');
             }
             answer = rawContent.trim();
+
+            // Extract OpenAI-compatible tool calls
+            if (msg?.tool_calls && Array.isArray(msg.tool_calls)) {
+              for (const tc of msg.tool_calls) {
+                if (tc.function?.name) {
+                  try {
+                    const parsedArgs = JSON.parse(tc.function.arguments || '{}');
+                    rawToolCalls.push({ name: tc.function.name, args: parsedArgs });
+                  } catch {}
+                }
+              }
+            }
+
+            // Fallback parser for markdown JSON tool calls in text
+            const jsonToolRegex = /```(?:json|tool)?\s*\{\s*"tool":\s*"([a-zA-Z0-9_]+)"\s*,\s*"args":\s*(\{[\s\S]*?\})\s*\}\s*```/g;
+            let match;
+            while ((match = jsonToolRegex.exec(rawContent)) !== null) {
+              try {
+                const tName = match[1];
+                const tArgs = JSON.parse(match[2]);
+                rawToolCalls.push({ name: tName, args: tArgs });
+              } catch {}
+            }
+
             if (answer && answer.length > 20) break;
           }
         } catch {
@@ -181,14 +235,23 @@ REGRAS OBRIGATÓRIAS:
       }
     }
 
-    // Always fetch the freshest room state right before appending logs to avoid race conditions or HP rewrites!
+    // Always fetch the freshest room state right before appending logs and executing tools
     const latestRoom = await db
       .prepare('SELECT state, version FROM rooms WHERE id=?')
       .bind(room.id)
       .first<{ state: string; version: number }>();
 
+    const executedTools: ToolExecutionResult[] = [];
+
     if (latestRoom) {
       const latestState: State = JSON.parse(latestRoom.state);
+
+      // Execute authoritative tools on latest state
+      for (const call of rawToolCalls) {
+        const result = executeServerAuthoritativeGmTool(call.name, call.args, latestState);
+        executedTools.push(result);
+      }
+
       if (text) {
         latestState.logs.push(entry(text, 'player'));
       }
@@ -201,7 +264,7 @@ REGRAS OBRIGATÓRIAS:
         .run();
     }
 
-    return NextResponse.json({ ok: true, answer, choices, searchHtml });
+    return NextResponse.json({ ok: true, answer, choices, executedTools, searchHtml });
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : 'A GM não respondeu. Tente novamente.' },

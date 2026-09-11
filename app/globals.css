@@ -711,3 +711,23 @@
   animation: npcProximityPulse 1.8s infinite;
 }
 
+/* Human Neutral Walking & Gentle Token Swaying Animation */
+@keyframes humanWalkSway {
+  0%, 100% {
+    transform: translateY(0px) rotate(-1deg);
+  }
+  50% {
+    transform: translateY(-1.8px) rotate(1deg);
+  }
+}
+
+.token-human-sway {
+  animation: humanWalkSway 2.4s ease-in-out infinite;
+  will-change: transform;
+}
+
+.token-smooth-glide {
+  transition: transform 0.28s cubic-bezier(0.2, 0.9, 0.3, 1), left 0.28s cubic-bezier(0.2, 0.9, 0.3, 1), top 0.28s cubic-bezier(0.2, 0.9, 0.3, 1);
+  will-change: transform, left, top;
+}
+

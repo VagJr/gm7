@@ -417,6 +417,18 @@ export type Character = {
   exhaustion: number;
   equipment?: EquipmentSlots;
   gold?: number;
+  partyId?: string;
+};
+
+export type PartyInvite = {
+  id: string;
+  fromCharId: string;
+  fromCharName: string;
+  fromUserId: string;
+  toCharId: string;
+  toCharName: string;
+  toUserId: string;
+  timestamp: number;
 };
 
 export type Enemy = {
@@ -457,6 +469,7 @@ export type State = {
   bonusActionUsed?: boolean;
   movementUsed?: number;
   biome?: 'village' | 'forest' | 'dungeon';
+  partyInvites?: PartyInvite[];
 };
 
 export const locations = [
@@ -940,7 +953,8 @@ export type AttackResult = {
 export function determineAttackMode(
   attackerConditions: string[] = [],
   targetConditions: string[] = [],
-  explicitMode: 'normal' | 'advantage' | 'disadvantage' = 'normal'
+  explicitMode: 'normal' | 'advantage' | 'disadvantage' = 'normal',
+  isRanged: boolean = false
 ): 'normal' | 'advantage' | 'disadvantage' {
   if (explicitMode !== 'normal') return explicitMode;
 
@@ -963,7 +977,12 @@ export function determineAttackMode(
     advantage = true;
   }
   if (tConds.some((c) => c.includes('caído') || c.includes('prone'))) {
-    advantage = true;
+    // Regra 5e: ataques corpo a corpo têm Vantagem; ataques à distância têm Desvantagem
+    if (isRanged) {
+      disadvantage = true;
+    } else {
+      advantage = true;
+    }
   }
   if (tConds.some((c) => c.includes('esquiv') || c.includes('dodge') || c.includes('invisível'))) {
     disadvantage = true;
@@ -975,11 +994,13 @@ export function determineAttackMode(
 }
 
 export function resolveAttack(
-  attacker: { name: string; attack: number; damage: string; conditions?: string[] },
+  attacker: { name: string; attack: number; damage: string; conditions?: string[]; weapon?: string },
   target: { id?: string; name: string; ac: number; hp: number; conditions?: string[] },
-  mode = 'normal'
+  mode = 'normal',
+  isRangedOverride?: boolean
 ): AttackResult {
-  const finalMode = determineAttackMode(attacker.conditions, target.conditions, mode as any);
+  const isRanged = isRangedOverride !== undefined ? isRangedOverride : getWeaponMaxRange(attacker.weapon).isRanged;
+  const finalMode = determineAttackMode(attacker.conditions, target.conditions, mode as any, isRanged);
   const r = d20(finalMode);
   const isTargetIncapacitated = (target.conditions || []).some((c) => {
     const s = c.toLowerCase();
@@ -987,7 +1008,14 @@ export function resolveAttack(
   });
   const isCrit = r.raw === 20 || (isTargetIncapacitated && r.raw >= 2);
   const isFumble = r.raw === 1;
-  const totalAttack = r.raw + attacker.attack;
+
+  // Bênção (Bless): +1d4
+  let blessBonus = 0;
+  if ((attacker.conditions || []).some((c) => c.toLowerCase().includes('abençoad') || c.toLowerCase().includes('bless'))) {
+    blessBonus = die(4);
+  }
+
+  const totalAttack = r.raw + attacker.attack + blessBonus;
   const hit = isCrit || (!isFumble && totalAttack >= target.ac);
   const damage = hit ? Math.max(0, roll(attacker.damage, isCrit).total) : 0;
   const hpBefore = target.hp;
@@ -995,7 +1023,8 @@ export function resolveAttack(
   target.hp = hpAfter;
 
   const modeTag = finalMode === 'advantage' ? ' (Vantagem)' : finalMode === 'disadvantage' ? ' (Desvantagem)' : '';
-  const text = `${attacker.name} → ${target.name}: d20 [${r.dice.join(', ')}]${modeTag} ${signed(attacker.attack)} = ${totalAttack} vs CA ${target.ac}. ${
+  const blessTag = blessBonus > 0 ? ` +1d4(${blessBonus})[Bênção]` : '';
+  const text = `${attacker.name} → ${target.name}: d20 [${r.dice.join(', ')}]${modeTag}${blessTag} ${signed(attacker.attack)} = ${totalAttack} vs CA ${target.ac}. ${
     hit ? (isCrit ? 'CRÍTICO! ' : '') + damage + ' de dano.' : 'Errou.'
   }`;
 
@@ -1017,7 +1046,7 @@ export function resolveAttack(
 }
 
 export function attack(
-  attacker: { name: string; attack: number; damage: string; conditions?: string[] },
+  attacker: { name: string; attack: number; damage: string; conditions?: string[]; weapon?: string },
   target: { name: string; ac: number; hp: number; conditions?: string[] },
   mode = 'normal'
 ) {
@@ -1052,6 +1081,200 @@ export function shortRestHeal(c: Character): { healed: number; rollText: string 
   const actualHealed = c.hp - oldHp;
   const rollText = `1d${hitDieSides} [${dieRoll}] ${signed(conBonus)} = recuperou ${actualHealed} PV (${c.hp}/${c.maxHp})`;
   return { healed: actualHealed, rollText };
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
+// TACTICAL COMBAT POSITIONING & SERVER-SIDE SPATIAL VALIDATION ENGINE
+// ════════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Tactical grid distance (D&D 5e Chebyshev metric where diagonals cost 1 square)
+ */
+export function getGridDistance(
+  p1: { x: number; y: number },
+  p2: { x: number; y: number }
+): number {
+  return Math.max(Math.abs(p1.x - p2.x), Math.abs(p1.y - p2.y));
+}
+
+/**
+ * Real spatial distance in meters (1 grid square = 1.5m / 5 feet)
+ */
+export function getDistanceMeters(
+  p1: { x: number; y: number },
+  p2: { x: number; y: number }
+): number {
+  return Number((getGridDistance(p1, p2) * 1.5).toFixed(1));
+}
+
+/**
+ * Returns weapon attack reach and type
+ */
+export function getWeaponMaxRange(weaponIdOrName?: string): { rangeSquares: number; isRanged: boolean } {
+  if (!weaponIdOrName) return { rangeSquares: 1, isRanged: false };
+  const w = weaponIdOrName.toLowerCase();
+
+  // Reach weapons (2 squares / 3m)
+  if (w.includes('lança') || w.includes('alabarda') || w.includes('glaive') || w.includes('chicote') || w.includes('reach')) {
+    return { rangeSquares: 2, isRanged: false };
+  }
+
+  // Ranged weapons
+  if (w.includes('arco-longo') || w.includes('arco longo')) return { rangeSquares: 18, isRanged: true };
+  if (w.includes('arco-curto') || w.includes('arco curto')) return { rangeSquares: 12, isRanged: true };
+  if (w.includes('besta-pesada') || w.includes('besta pesada')) return { rangeSquares: 16, isRanged: true };
+  if (w.includes('besta')) return { rangeSquares: 12, isRanged: true };
+  if (w.includes('dardo') || w.includes('adaga') || w.includes('arremesso')) {
+    return { rangeSquares: 4, isRanged: true };
+  }
+
+  // Check ITEMS_CATALOG by ID or name
+  const catalogItem = ITEMS_CATALOG[weaponIdOrName] || Object.values(ITEMS_CATALOG).find((i) => i.name.toLowerCase() === w);
+  if (catalogItem && catalogItem.ranged && catalogItem.rangeSquares) {
+    return { rangeSquares: catalogItem.rangeSquares, isRanged: true };
+  }
+
+  // Default standard melee (1 square / 1.5m)
+  return { rangeSquares: 1, isRanged: false };
+}
+
+/**
+ * Returns spell maximum casting range in squares
+ */
+export function getSpellMaxRange(spellNameOrId?: string): number {
+  if (!spellNameOrId) return 12;
+  const s = spellNameOrId.toLowerCase();
+  const found = SPELLS_CATALOG.find(
+    (sp) => sp.id.toLowerCase() === s || sp.name.toLowerCase() === s
+  );
+  if (found) return found.rangeSquares;
+  return 12; // Default 18m / 12 squares
+}
+
+/**
+ * Validates attack reach and line of sight on the board
+ */
+export function validateAttackRange(
+  attacker: { x: number; y: number; weapon?: string },
+  target: { x: number; y: number }
+): { inRange: boolean; distance: number; maxRange: number; isRanged: boolean } {
+  const distance = getGridDistance(attacker, target);
+  const { rangeSquares, isRanged } = getWeaponMaxRange(attacker.weapon);
+  return {
+    inRange: distance <= rangeSquares,
+    distance,
+    maxRange: rangeSquares,
+    isRanged
+  };
+}
+
+/**
+ * Validates spell casting range
+ */
+export function validateSpellRange(
+  caster: { x: number; y: number },
+  target: { x: number; y: number },
+  spellName?: string
+): { inRange: boolean; distance: number; maxRange: number } {
+  const distance = getGridDistance(caster, target);
+  const maxRange = getSpellMaxRange(spellName);
+  return {
+    inRange: distance <= maxRange,
+    distance,
+    maxRange
+  };
+}
+
+/**
+ * Validates character movement on the tactical board (bounds, speed budget, active turn)
+ */
+export function validateMovement(
+  character: Character,
+  destination: { x: number; y: number },
+  state: State,
+  maxBound: number = 15
+): { valid: boolean; reason?: string; distance: number } {
+  const { x, y } = destination;
+  if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || x > maxBound || y < 0 || y > maxBound) {
+    return { valid: false, reason: 'Coordenadas fora dos limites do tabuleiro.', distance: 0 };
+  }
+
+  const distance = getGridDistance({ x: character.x, y: character.y }, destination);
+  if (distance === 0) {
+    return { valid: true, distance: 0 };
+  }
+
+  // Incapacitated / Stunned cannot move
+  if (hasCondition(character, 'incapacitado') || hasCondition(character, 'atordoado') || hasCondition(character, 'paralisado')) {
+    return { valid: false, reason: 'Personagem incapacitado ou atordoado não pode se mover.', distance };
+  }
+
+  // Combat Turn & Movement Budget validation
+  if (state.combat) {
+    const activeTurnId = state.order[state.turn];
+    if (activeTurnId !== character.id) {
+      return { valid: false, reason: 'Aguarde o seu turno para se mover no combate.', distance };
+    }
+
+    const maxBudgetSquares = Math.floor(character.speed / 1.5);
+    const movementUsed = state.movementUsed || 0;
+    if (movementUsed + distance > maxBudgetSquares) {
+      const remaining = Math.max(0, maxBudgetSquares - movementUsed);
+      return {
+        valid: false,
+        reason: `Deslocamento insuficiente neste turno. Restam ${remaining} quadrados (${(remaining * 1.5).toFixed(1)}m), movimento solicitado de ${distance} quadrados (${(distance * 1.5).toFixed(1)}m).`,
+        distance
+      };
+    }
+  }
+
+  return { valid: true, distance };
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
+// STRUCTURED CONDITIONS ENGINE
+// ════════════════════════════════════════════════════════════════════════════════
+
+export type StructuredCondition =
+  | 'Amedrontado'
+  | 'Agarrado'
+  | 'Atordoado'
+  | 'Caído'
+  | 'Cego'
+  | 'Enfeitiçado'
+  | 'Envenenado'
+  | 'Impedido'
+  | 'Incapacitado'
+  | 'Inconsciente'
+  | 'Invisível'
+  | 'Paralisado'
+  | 'Petrificado'
+  | 'Surdo'
+  | 'Abençoado'
+  | 'Queimando'
+  | 'Congelado';
+
+export function hasCondition(entity: { conditions?: string[] }, conditionName: string): boolean {
+  if (!entity.conditions || entity.conditions.length === 0) return false;
+  const target = conditionName.toLowerCase();
+  return entity.conditions.some((c) => c.toLowerCase().includes(target));
+}
+
+export function applyCondition(entity: { conditions: string[] }, conditionName: string): boolean {
+  if (!entity.conditions) entity.conditions = [];
+  if (!hasCondition(entity, conditionName)) {
+    entity.conditions.push(conditionName);
+    return true;
+  }
+  return false;
+}
+
+export function removeCondition(entity: { conditions: string[] }, conditionName: string): boolean {
+  if (!entity.conditions || entity.conditions.length === 0) return false;
+  const target = conditionName.toLowerCase();
+  const prevLen = entity.conditions.length;
+  entity.conditions = entity.conditions.filter((c) => !c.toLowerCase().includes(target));
+  return entity.conditions.length < prevLen;
 }
 
 

@@ -154,8 +154,8 @@ async function runApiIntegrationTests() {
         inventory: 'Espadão de Batalha\nPoção de Cura (2)',
         notes: '',
         equipment: { mainHand: 'espadão' },
-        x: 1,
-        y: 1,
+        x: 6,
+        y: 3,
         spellAbility: 0,
         exhaustion: 0
       }
