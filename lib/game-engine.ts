@@ -1,3 +1,5 @@
+import { isGridTileWalkable, type CollisionPolygon } from './collision-system';
+
 export const abilities = ['Força', 'Destreza', 'Constituição', 'Inteligência', 'Sabedoria', 'Carisma'];
 export const classes = [
   ['Bárbaro', 12], ['Bardo', 8], ['Bruxo', 8], ['Clérigo', 8], ['Druida', 8],
@@ -1276,5 +1278,213 @@ export function removeCondition(entity: { conditions: string[] }, conditionName:
   entity.conditions = entity.conditions.filter((c) => !c.toLowerCase().includes(target));
   return entity.conditions.length < prevLen;
 }
+
+// ════════════════════════════════════════════════════════════════════════════════
+// SERVER-AUTHORITATIVE WAYPOINT PATH VALIDATION
+// ════════════════════════════════════════════════════════════════════════════════
+
+export interface WaypointValidationResult {
+  valid: boolean;
+  reason?: string;
+  finalPos: { x: number; y: number };
+  distance: number;
+  validatedWaypoints: { x: number; y: number }[];
+}
+
+/**
+ * Server-authoritative validation for multi-step waypoint movement paths.
+ * Validates bounds, step contiguity (Chebyshev dx, dy <= 1), incapacitated conditions,
+ * obstacle collisions via isGridTileWalkable, and combat turn + movement budget (5e Speed / 1.5m).
+ */
+export function validateWaypointPath(
+  character: Character,
+  waypoints: { x: number; y: number }[],
+  state: State,
+  maxBound: number = 15,
+  gridSize?: number,
+  customPolygons?: CollisionPolygon[]
+): WaypointValidationResult {
+  if (!waypoints || !Array.isArray(waypoints) || waypoints.length === 0) {
+    return {
+      valid: false,
+      reason: 'Nenhum waypoint fornecido.',
+      finalPos: { x: character.x, y: character.y },
+      distance: 0,
+      validatedWaypoints: []
+    };
+  }
+
+  // Incapacitated / Stunned / Paralyzed cannot move
+  if (
+    hasCondition(character, 'incapacitado') ||
+    hasCondition(character, 'atordoado') ||
+    hasCondition(character, 'paralisado')
+  ) {
+    return {
+      valid: false,
+      reason: 'Personagem incapacitado, atordoado ou paralisado não pode se mover.',
+      finalPos: { x: character.x, y: character.y },
+      distance: 0,
+      validatedWaypoints: []
+    };
+  }
+
+  const biome = (state.biome || 'village') as 'village' | 'forest' | 'dungeon';
+  const effectiveGridSize = gridSize || (maxBound + 1);
+
+  // Normalize path: ignore initial point if it's the current position
+  let currentPos = { x: character.x, y: character.y };
+  const steps: { x: number; y: number }[] = [];
+
+  for (let i = 0; i < waypoints.length; i++) {
+    const wp = waypoints[i];
+    if (
+      typeof wp?.x !== 'number' ||
+      typeof wp?.y !== 'number' ||
+      !Number.isInteger(wp.x) ||
+      !Number.isInteger(wp.y) ||
+      wp.x < 0 ||
+      wp.x > maxBound ||
+      wp.y < 0 ||
+      wp.y > maxBound
+    ) {
+      return {
+        valid: false,
+        reason: `Coordenada de waypoint inválida ou fora dos limites do tabuleiro (${wp?.x}, ${wp?.y}).`,
+        finalPos: currentPos,
+        distance: steps.length,
+        validatedWaypoints: steps
+      };
+    }
+
+    // If first waypoint is exact current position, skip
+    if (i === 0 && wp.x === currentPos.x && wp.y === currentPos.y) {
+      continue;
+    }
+
+    const dx = Math.abs(wp.x - currentPos.x);
+    const dy = Math.abs(wp.y - currentPos.y);
+
+    // Duplicate consecutive point, skip
+    if (dx === 0 && dy === 0) {
+      continue;
+    }
+
+    // Step must be contiguous (Chebyshev distance <= 1)
+    if (dx > 1 || dy > 1) {
+      return {
+        valid: false,
+        reason: `Passo não contíguo detectado de (${currentPos.x}, ${currentPos.y}) para (${wp.x}, ${wp.y}). Saltos de mais de 1 quadrado não são permitidos.`,
+        finalPos: currentPos,
+        distance: steps.length,
+        validatedWaypoints: steps
+      };
+    }
+
+    // Server-side obstacle / collision check
+    if (!isGridTileWalkable(biome, wp.x, wp.y, effectiveGridSize, customPolygons)) {
+      return {
+        valid: false,
+        reason: `Caminho bloqueado por obstáculo ou terreno intransponível em (${wp.x}, ${wp.y}).`,
+        finalPos: currentPos,
+        distance: steps.length,
+        validatedWaypoints: steps
+      };
+    }
+
+    currentPos = { x: wp.x, y: wp.y };
+    steps.push(currentPos);
+  }
+
+  if (steps.length === 0) {
+    return {
+      valid: true,
+      finalPos: { x: character.x, y: character.y },
+      distance: 0,
+      validatedWaypoints: []
+    };
+  }
+
+  const totalDistance = steps.length;
+
+  // Combat Turn & Movement Budget validation
+  if (state.combat) {
+    const activeTurnId = state.order[state.turn];
+    if (activeTurnId !== character.id) {
+      return {
+        valid: false,
+        reason: 'Aguarde o seu turno para se mover no combate.',
+        finalPos: { x: character.x, y: character.y },
+        distance: 0,
+        validatedWaypoints: []
+      };
+    }
+
+    const maxBudgetSquares = Math.floor(character.speed / 1.5);
+    const movementUsed = state.movementUsed || 0;
+    if (movementUsed + totalDistance > maxBudgetSquares) {
+      const remaining = Math.max(0, maxBudgetSquares - movementUsed);
+      return {
+        valid: false,
+        reason: `Deslocamento insuficiente neste turno. Restam ${remaining} quadrados (${(remaining * 1.5).toFixed(1)}m), mas o caminho solicitado requer ${totalDistance} quadrados (${(totalDistance * 1.5).toFixed(1)}m).`,
+        finalPos: { x: character.x, y: character.y },
+        distance: 0,
+        validatedWaypoints: []
+      };
+    }
+  } else {
+    // Non-combat sanity check: prevent malicious unbounded waypoints packet
+    if (totalDistance > 50) {
+      return {
+        valid: false,
+        reason: 'Caminho longo demais em uma única ação (limite: 50 quadrados).',
+        finalPos: { x: character.x, y: character.y },
+        distance: 0,
+        validatedWaypoints: []
+      };
+    }
+  }
+
+  return {
+    valid: true,
+    finalPos: steps[steps.length - 1],
+    distance: totalDistance,
+    validatedWaypoints: steps
+  };
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
+// CLOUDFLARE WEBSOCKET & DURABLE OBJECT REAL-TIME PROTOCOL TYPES
+// ════════════════════════════════════════════════════════════════════════════════
+
+export interface ProjectileVFX {
+  id: string;
+  type: 'arrow' | 'fire_bolt' | 'magic_missile' | 'sacred_flame' | 'frost_ray' | 'eldritch' | 'slash' | 'heal';
+  from: { x: number; y: number };
+  to: { x: number; y: number };
+  hit: boolean;
+  damage?: number;
+}
+
+export type WsClientMessage =
+  | { type: 'JOIN_ROOM'; roomId: string; userId: string; characterId?: string }
+  | { type: 'MOVE_PATH'; roomId: string; characterId: string; waypoints: { x: number; y: number }[]; seq: number; gridSize?: number; maxBound?: number }
+  | { type: 'ATTACK'; roomId: string; actorId: string; targetId: string; weaponIndex?: number; seq: number }
+  | { type: 'CAST_SPELL'; roomId: string; actorId: string; targetId?: string; spellName: string; level?: number; seq: number }
+  | { type: 'ACTION'; roomId: string; action: string; payload?: Record<string, unknown>; seq: number }
+  | { type: 'CHAT'; roomId: string; sender: string; text: string }
+  | { type: 'PING'; timestamp: number };
+
+export type WsServerMessage =
+  | { type: 'INIT_SNAPSHOT'; roomId: string; state: State; version: number; seq: number; serverTime: number }
+  | { type: 'SYNC_SNAPSHOT'; roomId: string; state: State; version: number; seq: number }
+  | { type: 'HERO_MOVED'; roomId: string; characterId: string; waypoints: { x: number; y: number }[]; finalPos: { x: number; y: number }; seq: number }
+  | { type: 'MOVE_REJECTED'; roomId: string; characterId: string; originalPos: { x: number; y: number }; reason: string; seq: number }
+  | { type: 'ATTACK_RESULT'; roomId: string; actorId: string; targetId: string; projectile?: ProjectileVFX; attackResult: AttackResult; state: State; version: number; seq: number }
+  | { type: 'ACTION_RESULT'; roomId: string; action: string; state: State; version: number; seq: number }
+  | { type: 'CHAT_MESSAGE'; roomId: string; sender: string; text: string; timestamp: number }
+  | { type: 'PONG'; timestamp: number }
+  | { type: 'ERROR'; message: string; code?: string; seq?: number };
+
 
 

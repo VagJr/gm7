@@ -110,6 +110,8 @@ interface TacticalMapProps {
   onCancelTargeting: () => void;
   onSelectToken: (type: 'hero' | 'enemy', id: string) => void;
   onMoveHero: (heroId: string, x: number, y: number) => void;
+  onMoveHeroPath?: (heroId: string, waypoints: Point[]) => void;
+  remoteWalkPath?: { characterId: string; waypoints: Point[]; seq: number } | null;
   onTargetEnemy: (enemyId: string) => void;
   locationName: string;
   locationLabel: string;
@@ -137,6 +139,8 @@ export function TacticalMap({
   onCancelTargeting,
   onSelectToken,
   onMoveHero,
+  onMoveHeroPath,
+  remoteWalkPath,
   onTargetEnemy,
   locationName,
   locationLabel,
@@ -323,59 +327,106 @@ export function TacticalMap({
     return set;
   }, [characters, enemies, activeHero?.id]);
 
-  // Fluid MMO-like Walk State outside combat
-  const [walkingHeroPos, setWalkingHeroPos] = useState<{ id: string; x: number; y: number } | null>(null);
-  const walkTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // Fluid MMO-like Walk State with 340ms human neutral cadence & body sway
+  const [walkingHeroes, setWalkingHeroes] = useState<Record<string, { x: number; y: number; isWalking?: boolean }>>({});
+  const walkTimersRef = useRef<Record<string, NodeJS.Timeout>>({});
+  const lastRemoteSeqRef = useRef<number>(0);
 
   useEffect(() => {
     return () => {
-      if (walkTimerRef.current) clearInterval(walkTimerRef.current);
+      for (const timer of Object.values(walkTimersRef.current)) {
+        clearInterval(timer);
+      }
     };
   }, []);
 
-  const currentHeroX = (walkingHeroPos && walkingHeroPos.id === activeHero?.id) ? walkingHeroPos.x : activeHero?.x ?? 0;
-  const currentHeroY = (walkingHeroPos && walkingHeroPos.id === activeHero?.id) ? walkingHeroPos.y : activeHero?.y ?? 0;
+  const activeWalk = activeHero ? walkingHeroes[activeHero.id] : undefined;
+  const currentHeroX = activeWalk ? activeWalk.x : activeHero?.x ?? 0;
+  const currentHeroY = activeWalk ? activeWalk.y : activeHero?.y ?? 0;
 
-  // Seamlessly keep walkingHeroPos until server characters coordinate catches up
+  // Clean up completed walking states once server coordinates catch up
   useEffect(() => {
-    if (walkingHeroPos) {
-      const char = characters.find((c) => c.id === walkingHeroPos.id);
-      if (char && char.x === walkingHeroPos.x && char.y === walkingHeroPos.y) {
-        setWalkingHeroPos(null);
+    setWalkingHeroes((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const [id, walk] of Object.entries(prev)) {
+        if (!walk.isWalking) {
+          const char = characters.find((c) => c.id === id);
+          if (char && char.x === walk.x && char.y === walk.y) {
+            delete next[id];
+            changed = true;
+          }
+        }
       }
-    }
-  }, [characters, walkingHeroPos]);
+      return changed ? next : prev;
+    });
+  }, [characters]);
 
   const displayHeroes = useMemo(() => {
-    if (!walkingHeroPos) return characters;
-    return characters.map((c) => (c.id === walkingHeroPos.id ? { ...c, x: walkingHeroPos.x, y: walkingHeroPos.y } : c));
-  }, [characters, walkingHeroPos]);
+    return characters.map((c) => {
+      const walk = walkingHeroes[c.id];
+      if (walk) {
+        return { ...c, x: walk.x, y: walk.y, isWalking: Boolean(walk.isWalking) } as Character & { isWalking?: boolean };
+      }
+      return { ...c, isWalking: false } as Character & { isWalking?: boolean };
+    });
+  }, [characters, walkingHeroes]);
 
-  const handleFluidWalk = (heroId: string, path: Point[]) => {
+  const animateHeroPath = (heroId: string, path: Point[], isLocalInitiator: boolean = true) => {
     if (path.length <= 1) return;
-    if (walkTimerRef.current) {
-      clearInterval(walkTimerRef.current);
-      walkTimerRef.current = null;
+
+    if (walkTimersRef.current[heroId]) {
+      clearInterval(walkTimersRef.current[heroId]);
+      delete walkTimersRef.current[heroId];
     }
+
     let step = 0;
-    // Human neutral walking cadence: 260ms per tile (~3.8 steps/sec)
-    const stepInterval = 260;
-    walkTimerRef.current = setInterval(() => {
+    // Human neutral walking cadence: 340ms per tile (~2.94 squares/sec)
+    const stepInterval = 340;
+
+    // Set initial position
+    setWalkingHeroes((prev) => ({
+      ...prev,
+      [heroId]: { x: path[0].x, y: path[0].y, isWalking: true }
+    }));
+
+    walkTimersRef.current[heroId] = setInterval(() => {
       step++;
       if (step < path.length) {
-        setWalkingHeroPos({ id: heroId, x: path[step].x, y: path[step].y });
+        setWalkingHeroes((prev) => ({
+          ...prev,
+          [heroId]: { x: path[step].x, y: path[step].y, isWalking: true }
+        }));
       } else {
-        if (walkTimerRef.current) {
-          clearInterval(walkTimerRef.current);
-          walkTimerRef.current = null;
+        if (walkTimersRef.current[heroId]) {
+          clearInterval(walkTimersRef.current[heroId]);
+          delete walkTimersRef.current[heroId];
         }
         const finalDest = path[path.length - 1];
         // RETAIN final destination in state so token NEVER rubberbands back
-        setWalkingHeroPos({ id: heroId, x: finalDest.x, y: finalDest.y });
-        onMoveHero(heroId, finalDest.x, finalDest.y);
+        setWalkingHeroes((prev) => ({
+          ...prev,
+          [heroId]: { x: finalDest.x, y: finalDest.y, isWalking: false }
+        }));
+        if (isLocalInitiator) {
+          onMoveHero(heroId, finalDest.x, finalDest.y);
+        }
       }
     }, stepInterval);
   };
+
+  // Sync remote player walks received via WebSocket Durable Object
+  useEffect(() => {
+    if (remoteWalkPath && remoteWalkPath.waypoints && remoteWalkPath.waypoints.length > 1) {
+      if (remoteWalkPath.seq !== lastRemoteSeqRef.current) {
+        lastRemoteSeqRef.current = remoteWalkPath.seq;
+        const isCurrentHeroWalking = walkingHeroes[remoteWalkPath.characterId]?.isWalking;
+        if (!isCurrentHeroWalking) {
+          animateHeroPath(remoteWalkPath.characterId, remoteWalkPath.waypoints, false);
+        }
+      }
+    }
+  }, [remoteWalkPath, walkingHeroes]);
 
   // A* calculated path from active hero to hovered square navigating obstacles
   const activePath = useMemo(() => {
@@ -757,7 +808,8 @@ export function TacticalMap({
                         onTalkNpc?.(npc.id);
                       } else if (canMove && activeHero && isWalkable) {
                         if (!isCombat && activePath.length > 1) {
-                          handleFluidWalk(activeHero.id, activePath);
+                          onMoveHeroPath?.(activeHero.id, activePath);
+                          animateHeroPath(activeHero.id, activePath, true);
                         } else {
                           onMoveHero(activeHero.id, x, y);
                         }
@@ -771,12 +823,18 @@ export function TacticalMap({
                       if (isWalkable) {
                         if (!isCombat) {
                           if (activePath.length > 1) {
-                            handleFluidWalk(activeHero.id, activePath);
+                            onMoveHeroPath?.(activeHero.id, activePath);
+                            animateHeroPath(activeHero.id, activePath, true);
                           } else {
                             onMoveHero(activeHero.id, x, y);
                           }
                         } else if (pathStepCount > 0 && isPathAffordable) {
-                          onMoveHero(activeHero.id, x, y);
+                          if (activePath.length > 1) {
+                            onMoveHeroPath?.(activeHero.id, activePath);
+                            animateHeroPath(activeHero.id, activePath, true);
+                          } else {
+                            onMoveHero(activeHero.id, x, y);
+                          }
                         }
                       }
                     }
@@ -926,7 +984,7 @@ export function TacticalMap({
                             onSelectToken('hero', hero.id);
                           }
                         }}
-                      className={`relative z-10 w-7 h-7 sm:w-9 sm:h-9 rounded-full flex flex-col items-center justify-center cursor-pointer token-human-sway token-smooth-glide ${
+                      className={`relative z-10 w-7 h-7 sm:w-9 sm:h-9 rounded-full flex flex-col items-center justify-center cursor-pointer ${(hero as any).isWalking ? 'token-walking-active' : 'token-human-sway'} token-smooth-glide ${
                         isActiveTurn
                           ? 'ring-4 ring-amber-400 ring-offset-2 ring-offset-black scale-115 shadow-[0_0_25px_rgba(251,191,36,0.9)] token-selected-pulse'
                           : isSelected

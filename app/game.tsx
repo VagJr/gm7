@@ -61,8 +61,10 @@ import {
   SPELLS_CATALOG,
   type Character,
   type State,
-  type Enemy
+  type Enemy,
+  type WsServerMessage
 } from '@/lib/game-engine';
+import type { Point } from '@/lib/collision-system';
 import { GM_PROMPT } from '@/lib/gm-prompt';
 
 // New CRPG Digital Video Game Components
@@ -209,6 +211,10 @@ export default function Game() {
   const actionQueueRef = React.useRef(Promise.resolve<any>(null));
   const localMoveShieldRef = React.useRef<{ [charId: string]: { x: number; y: number; time: number } }>({});
   const broadcastChannelRef = React.useRef<BroadcastChannel | null>(null);
+  const wsRef = React.useRef<WebSocket | null>(null);
+  const clientSeqRef = React.useRef<number>(1);
+  const isWsConnectedRef = React.useRef<boolean>(false);
+  const [remoteWalkPath, setRemoteWalkPath] = useState<{ characterId: string; waypoints: Point[]; seq: number } | null>(null);
   const [showPartySidebar, setShowPartySidebar] = useState(true);
   const [showGmSidebar, setShowGmSidebar] = useState(false);
   const [showNarrativeBox, setShowNarrativeBox] = useState(true);
@@ -355,13 +361,17 @@ export default function Game() {
     }
   }, []);
 
-  // REAL-TIME MULTIPLAYER SYNCHRONIZATION: BroadcastChannel (0ms local cross-window) + SSE Stream (<20ms network)
+  // REAL-TIME MULTIPLAYER SYNCHRONIZATION: Cloudflare WebSocket + Durable Objects (Native Real-Time Push)
+  // + Local BroadcastChannel (0ms local cross-window sync) + Automatic Reconnection & Snapshot Sync
   useEffect(() => {
     if (!room?.id || typeof window === 'undefined') return;
 
     const roomId = room.id;
-    let eventSource: EventSource | null = null;
+    let ws: WebSocket | null = null;
+    let reconnectTimeout: NodeJS.Timeout | null = null;
+    let fallbackPollingTimer: NodeJS.Timeout | null = null;
     let bc: BroadcastChannel | null = null;
+    let isDisposed = false;
 
     // 1. BroadcastChannel for instant (0ms) sync between tabs and windows on the same PC
     try {
@@ -371,7 +381,6 @@ export default function Game() {
         if (event.data?.type === 'ROOM_MUTATION' && event.data?.room) {
           applyProtectedRoomState(event.data.room);
         } else if (event.data?.type === 'HERO_MOVE') {
-          // Instant token glide from peer window on same machine
           const { heroId, x, y } = event.data;
           setRoom((prev) => {
             if (!prev) return prev;
@@ -383,48 +392,221 @@ export default function Game() {
               }
             };
           });
+        } else if (event.data?.type === 'HERO_MOVE_PATH') {
+          const { heroId, waypoints } = event.data;
+          setRemoteWalkPath({
+            characterId: heroId,
+            waypoints,
+            seq: ++clientSeqRef.current
+          });
         }
       };
     } catch {
-      // BroadcastChannel might not be supported in older envs
+      // BroadcastChannel fallback
     }
 
-    // 2. Server-Sent Events (SSE) Stream for dedicated-server style push broadcasts
-    try {
-      eventSource = new EventSource(`/api/game/stream?room=${encodeURIComponent(roomId)}`);
-      eventSource.addEventListener('update', (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data && data.state && data.version !== undefined) {
-            const streamedRoom: Room = {
-              id: roomId,
-              owner: roomRef.current?.owner || '',
-              name: roomRef.current?.name || '',
-              code: roomRef.current?.code || '',
-              version: data.version,
-              state: data.state
-            };
-            applyProtectedRoomState(streamedRoom);
+    // 2. Cloudflare Native WebSocket + Durable Objects Transport
+    const connectWs = () => {
+      if (isDisposed) return;
+      try {
+        const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${wsProto}//${window.location.host}/api/game/ws?room=${encodeURIComponent(roomId)}&userId=${encodeURIComponent(user || 'anon')}`;
+        ws = new WebSocket(wsUrl);
+        wsRef.current = ws;
+
+        ws.onopen = () => {
+          if (isDisposed) {
+            ws?.close();
+            return;
           }
-        } catch (err) {
-          console.warn('SSE event parse notice:', err);
-        }
-      });
-    } catch (err) {
-      console.warn('SSE connection notice:', err);
-    }
+          isWsConnectedRef.current = true;
+          // When WebSocket is connected, STOP HTTP polling immediately!
+          if (fallbackPollingTimer) {
+            clearInterval(fallbackPollingTimer);
+            fallbackPollingTimer = null;
+          }
 
-    // 3. Fallback heartbeat polling
-    const timer = setInterval(() => {
-      if (!busy) {
-        void load(roomId);
+          ws?.send(
+            JSON.stringify({
+              type: 'JOIN_ROOM',
+              roomId,
+              userId: user || 'anon',
+              characterId: selected
+            })
+          );
+        };
+
+        ws.onmessage = (event) => {
+          if (isDisposed) return;
+          try {
+            const msg = JSON.parse(event.data) as WsServerMessage;
+            switch (msg.type) {
+              case 'INIT_SNAPSHOT':
+              case 'SYNC_SNAPSHOT': {
+                const snapRoom: Room = {
+                  id: roomId,
+                  owner: roomRef.current?.owner || '',
+                  name: roomRef.current?.name || '',
+                  code: roomRef.current?.code || '',
+                  version: msg.version,
+                  state: msg.state
+                };
+                applyProtectedRoomState(snapRoom);
+                break;
+              }
+
+              case 'HERO_MOVED': {
+                // Trigger smooth 340ms waypoint walking animation with token sway
+                setRemoteWalkPath({
+                  characterId: msg.characterId,
+                  waypoints: msg.waypoints,
+                  seq: msg.seq
+                });
+
+                setRoom((prev) => {
+                  if (!prev) return prev;
+                  return {
+                    ...prev,
+                    version: Math.max(prev.version, msg.seq),
+                    state: {
+                      ...prev.state,
+                      characters: prev.state.characters.map((c) =>
+                        c.id === msg.characterId ? { ...c, x: msg.finalPos.x, y: msg.finalPos.y } : c
+                      )
+                    }
+                  };
+                });
+                break;
+              }
+
+              case 'MOVE_REJECTED': {
+                setError(msg.reason || 'Movimento rejeitado pelo servidor.');
+                // Revert to server-authoritative original position
+                setRoom((prev) => {
+                  if (!prev) return prev;
+                  return {
+                    ...prev,
+                    state: {
+                      ...prev.state,
+                      characters: prev.state.characters.map((c) =>
+                        c.id === msg.characterId ? { ...c, x: msg.originalPos.x, y: msg.originalPos.y } : c
+                      )
+                    }
+                  };
+                });
+                break;
+              }
+
+              case 'ATTACK_RESULT': {
+                // Render projectile VFX
+                if (msg.projectile) {
+                  const proj: ProjectileVfx = {
+                    id: msg.projectile.id,
+                    startX: msg.projectile.from.x,
+                    startY: msg.projectile.from.y,
+                    targetX: msg.projectile.to.x,
+                    targetY: msg.projectile.to.y,
+                    type: msg.projectile.type as any
+                  };
+                  setActiveProjectiles((prev) => [...prev, proj]);
+                  setTimeout(() => {
+                    setActiveProjectiles((prev) => prev.filter((p) => p.id !== proj.id));
+                  }, 900);
+                }
+
+                // Render floating damage text
+                const target =
+                  msg.state.characters.find((c) => c.id === msg.targetId) ||
+                  msg.state.enemies.find((e) => e.id === msg.targetId);
+                if (target) {
+                  const curGrid = battlemapBiome === 'village' ? 8 : dungeonSize;
+                  const posX = ((target.x + 0.5) / curGrid) * 100;
+                  const posY = ((target.y + 0.5) / curGrid) * 100;
+                  const newFloat: FloatingNumber = {
+                    id: crypto.randomUUID(),
+                    x: posX,
+                    y: posY,
+                    text: msg.attackResult.hit
+                      ? (msg.attackResult.isCrit ? `CRÍTICO! -${msg.attackResult.damage}` : `-${msg.attackResult.damage}`)
+                      : 'ERROU!',
+                    type: msg.attackResult.isCrit ? 'crit' : msg.attackResult.hit ? 'damage' : 'miss'
+                  };
+                  setFloatingTexts((prev) => [...prev, newFloat]);
+                  setTimeout(() => {
+                    setFloatingTexts((prev) => prev.filter((f) => f.id !== newFloat.id));
+                  }, 1600);
+                }
+
+                // Apply updated state
+                const snapRoom: Room = {
+                  id: roomId,
+                  owner: roomRef.current?.owner || '',
+                  name: roomRef.current?.name || '',
+                  code: roomRef.current?.code || '',
+                  version: msg.version,
+                  state: msg.state
+                };
+                applyProtectedRoomState(snapRoom);
+                break;
+              }
+
+              case 'CHAT_MESSAGE': {
+                setRoom((prev) => {
+                  if (!prev) return prev;
+                  return {
+                    ...prev,
+                    state: {
+                      ...prev.state,
+                      logs: [...prev.state.logs, {
+                        id: crypto.randomUUID(),
+                        text: `${msg.sender}: ${msg.text}`,
+                        kind: 'player',
+                        time: new Date(msg.timestamp).toLocaleTimeString('pt-BR')
+                      }]
+                    }
+                  };
+                });
+                break;
+              }
+
+              default:
+                break;
+            }
+          } catch (err) {
+            console.warn('WebSocket message parse notice:', err);
+          }
+        };
+
+        ws.onclose = () => {
+          isWsConnectedRef.current = false;
+          if (isDisposed) return;
+          // If WS disconnected, temporarily poll while reconnecting
+          if (!fallbackPollingTimer) {
+            fallbackPollingTimer = setInterval(() => {
+              if (!busy) void load(roomId);
+            }, 3000);
+          }
+          // Exponential / delayed reconnection
+          reconnectTimeout = setTimeout(connectWs, 2000);
+        };
+
+        ws.onerror = () => {
+          ws?.close();
+        };
+      } catch (err) {
+        console.warn('WebSocket connection init notice:', err);
       }
-    }, 1500);
+    };
+
+    connectWs();
 
     return () => {
-      clearInterval(timer);
-      if (eventSource) {
-        eventSource.close();
+      isDisposed = true;
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+      if (fallbackPollingTimer) clearInterval(fallbackPollingTimer);
+      if (ws) {
+        ws.close();
+        if (wsRef.current === ws) wsRef.current = null;
       }
       if (bc) {
         bc.close();
@@ -433,7 +615,7 @@ export default function Game() {
         }
       }
     };
-  }, [room?.id, applyProtectedRoomState, busy, load]);
+  }, [room?.id, applyProtectedRoomState, busy, load, user, selected, battlemapBiome, dungeonSize]);
 
   // General server action dispatch with queue to eliminate lag and prevent dropping fast clicks
   async function action(a: Record<string, unknown>) {
@@ -1393,9 +1575,65 @@ export default function Game() {
                         });
                       } catch {}
 
-                      // 4. Authoritative server dispatch
-                      void action({ action: 'move', character: heroId, x, y, maxBound: curGrid - 1, gridSize: curGrid });
+                      // 4. Authoritative WebSocket dispatch with REST fallback
+                      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                        wsRef.current.send(
+                          JSON.stringify({
+                            type: 'MOVE_PATH',
+                            roomId: room?.id,
+                            characterId: heroId,
+                            waypoints: [{ x, y }],
+                            seq: ++clientSeqRef.current,
+                            maxBound: curGrid - 1,
+                            gridSize: curGrid
+                          })
+                        );
+                      } else {
+                        void action({ action: 'move', character: heroId, x, y, maxBound: curGrid - 1, gridSize: curGrid });
+                      }
                     }}
+                    onMoveHeroPath={(heroId, waypoints) => {
+                      if (waypoints.length === 0) return;
+                      const finalDest = waypoints[waypoints.length - 1];
+                      const curGrid = battlemapBiome === 'village' ? 8 : dungeonSize;
+
+                      // 1. Arm rollback shield
+                      localMoveShieldRef.current[heroId] = { x: finalDest.x, y: finalDest.y, time: Date.now() };
+
+                      // 2. Instant cross-window broadcast on same PC
+                      try {
+                        broadcastChannelRef.current?.postMessage({
+                          type: 'HERO_MOVE_PATH',
+                          heroId,
+                          waypoints
+                        });
+                      } catch {}
+
+                      // 3. Authoritative WebSocket dispatch to Cloudflare Durable Object
+                      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                        wsRef.current.send(
+                          JSON.stringify({
+                            type: 'MOVE_PATH',
+                            roomId: room?.id,
+                            characterId: heroId,
+                            waypoints,
+                            seq: ++clientSeqRef.current,
+                            maxBound: curGrid - 1,
+                            gridSize: curGrid
+                          })
+                        );
+                      } else {
+                        void action({
+                          action: 'move',
+                          character: heroId,
+                          x: finalDest.x,
+                          y: finalDest.y,
+                          maxBound: curGrid - 1,
+                          gridSize: curGrid
+                        });
+                      }
+                    }}
+                    remoteWalkPath={remoteWalkPath}
                     onTargetEnemy={(enemyId) => {
                       handleExecuteAttack(enemyId);
                     }}
