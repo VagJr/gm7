@@ -2,7 +2,7 @@
 import { AdminMapEditor } from '@/components/admin/admin-map-editor';
 
 export const metadata = {
-  title: 'Editor Administrativo de Mapas | Lume 5e',
+  title: 'Editor Administrativo de Mapas | Dragons and Dungeons',
   description: 'Editor administrativo para mapeamento de zonas de colisão e teste tático de pathfinding.'
 };
 

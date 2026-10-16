@@ -19,9 +19,15 @@ import {
 import {
   Character,
   ITEMS_CATALOG,
-  ItemDefinition,
-  calculateEquippedStats
+  ItemDefinition
 } from '@/lib/game-engine';
+import { parseInventoryStacks, normalizeInventoryName } from '@/lib/inventory-utils';
+import {
+  equipInventoryItem,
+  getEquipSlotForItem,
+  resolveCharacterItem,
+  unequipInventorySlot
+} from '@/lib/equipment-inventory';
 
 interface InventoryPanelProps {
   hero: Character;
@@ -32,21 +38,133 @@ interface InventoryPanelProps {
 
 export function InventoryPanel({ hero, onUpdateHero, onClose, onUseItem }: InventoryPanelProps) {
   const [selectedItem, setSelectedItem] = useState<ItemDefinition | null>(null);
-  const [inventoryList, setInventoryList] = useState<string[]>(() => {
-    // Parse inventory text or use default catalog items
-    const parsed = hero.inventory
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean);
-    return parsed.length > 0
-      ? parsed
-      : ['Espada Longa', 'Cota de Malha', 'Escudo de Carvalho e Ferro', 'Poção de Cura (2)', 'Tocha Alquímica'];
-  });
+  /*
+   * O inventário textual salvo pelo servidor ? a fonte da verdade.
+   * Não filtramos mais itens s? porque não estão no ITEMS_CATALOG.
+   * Isso permite visualizar loot procedural, legado e itens de missão.
+   */
+  const inventoryStacks =
+    parseInventoryStacks(
+      hero.inventory || ''
+    );
+
+  const persistedItemData =
+    ((hero as any).inventoryItemData || {}) as Record<
+      string,
+      ItemDefinition
+    >;
+
+  const catalogItems =
+    Object.values(
+      ITEMS_CATALOG
+    );
+
+  const ownedInventoryItems =
+    inventoryStacks.map(
+      (stack) => {
+        const normalized =
+          normalizeInventoryName(
+            stack.name
+          );
+
+        const catalogItem =
+          catalogItems.find(
+            (candidate) =>
+              normalizeInventoryName(
+                candidate.name
+              ) === normalized
+          );
+
+        const persistedItem =
+          Object.values(
+            persistedItemData
+          ).find(
+            (candidate) =>
+              normalizeInventoryName(
+                candidate.name
+              ) === normalized
+          );
+
+        const item =
+          catalogItem ||
+          persistedItem ||
+          ({
+            id:
+              'legacy-' +
+              normalized
+                .replace(
+                  /[^a-z0-9]+/g,
+                  '-'
+                )
+                .replace(
+                  /^-|-$/g,
+                  ''
+                ),
+
+            name:
+              stack.name,
+
+            type:
+              'outro',
+
+            rarity:
+              'comum',
+
+            description:
+              'Item obtido durante a aventura. Este objeto pertence ao inventário persistente do personagem, mesmo sem possuir uma definição completa no catálogo atual.',
+
+            weight:
+              0,
+
+            value:
+              15,
+
+            icon:
+              'Package'
+          } satisfies ItemDefinition);
+
+        return {
+          item,
+          quantity:
+            stack.quantity,
+
+          catalogKnown:
+            Boolean(
+              catalogItem ||
+              persistedItem
+            )
+        };
+      }
+    );
+
+  const getQuantity = (
+    item: ItemDefinition
+  ) =>
+    inventoryStacks
+      .filter(
+        (stack) =>
+          normalizeInventoryName(
+            stack.name
+          ) ===
+          normalizeInventoryName(
+            item.name
+          )
+      )
+      .reduce(
+        (total, stack) =>
+          total +
+          stack.quantity,
+        0
+      );
 
   const equipment = hero.equipment || {};
-
   // Resolve equipped item definitions
-  const getEquipped = (slotId?: string) => (slotId ? ITEMS_CATALOG[slotId] : undefined);
+  const getEquipped =
+    (slotId?: string) =>
+      resolveCharacterItem(
+        hero,
+        slotId
+      );
   const mainHand = getEquipped(equipment.mainHand);
   const offHand = getEquipped(equipment.offHand);
   const armor = getEquipped(equipment.armor);
@@ -55,43 +173,37 @@ export function InventoryPanel({ hero, onUpdateHero, onClose, onUseItem }: Inven
   const accessory = getEquipped(equipment.accessory);
 
   // Equip an item
-  const handleEquip = (item: ItemDefinition) => {
-    const nextEquipment = { ...equipment };
+  const handleEquip = (
+    item: ItemDefinition
+  ) => {
+    const updated =
+      equipInventoryItem(
+        hero,
+        item
+      );
 
-    if (item.type === 'arma') {
-      nextEquipment.mainHand = item.id;
-    } else if (item.type === 'escudo') {
-      nextEquipment.offHand = item.id;
-    } else if (item.type === 'armadura') {
-      nextEquipment.armor = item.id;
-    } else if (item.type === 'elmo') {
-      nextEquipment.helm = item.id;
-    } else if (item.type === 'botas') {
-      nextEquipment.boots = item.id;
-    } else if (item.type === 'acessorio') {
-      nextEquipment.accessory = item.id;
-    }
+    onUpdateHero(
+      updated
+    );
 
-    const updated = calculateEquippedStats({
-      ...hero,
-      equipment: nextEquipment
-    });
-
-    onUpdateHero(updated);
-    setSelectedItem(null);
+    setSelectedItem(
+      null
+    );
   };
 
   // Unequip slot
-  const handleUnequip = (slot: keyof typeof equipment) => {
-    const nextEquipment = { ...equipment };
-    delete nextEquipment[slot];
+  const handleUnequip = (
+    slot: keyof typeof equipment
+  ) => {
+    const updated =
+      unequipInventorySlot(
+        hero,
+        slot
+      );
 
-    const updated = calculateEquippedStats({
-      ...hero,
-      equipment: nextEquipment
-    });
-
-    onUpdateHero(updated);
+    onUpdateHero(
+      updated
+    );
   };
 
   // Use consumable (e.g. potion)
@@ -111,18 +223,24 @@ export function InventoryPanel({ hero, onUpdateHero, onClose, onUseItem }: Inven
   // Calculate total weight
   const totalWeight = Object.values(equipment)
     .filter(Boolean)
-    .reduce((sum, id) => sum + (ITEMS_CATALOG[id!]?.weight || 0), 12);
+    .reduce((sum, id) => sum +
+      (
+        resolveCharacterItem(
+          hero,
+          id as string
+        )?.weight || 0
+      ), 12);
 
   const maxWeight = hero.stats[0] * 7.5; // Strength x 7.5 kg (5e metric)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md p-3 sm:p-6 animate-fade-in select-none">
-      <div className="relative w-full max-w-4xl bg-zinc-950 border-2 border-amber-900/60 rounded-3xl p-4 sm:p-6 shadow-2xl flex flex-col gap-4 max-h-[90vh] overflow-hidden">
+      <div role="dialog" aria-modal="true" aria-labelledby="inventory-title" className="dd-inventory relative w-full max-w-4xl bg-zinc-950 border-2 border-amber-900/60 rounded-3xl p-4 sm:p-6 shadow-2xl flex flex-col gap-4 max-h-[92dvh] min-h-0 overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+        <div className="dd-inventory-header flex items-center justify-between border-b border-zinc-800 pb-3">
           <div className="flex items-center gap-2">
             <span className="w-3 h-3 rounded-full bg-amber-500" />
-            <h2 className="text-lg sm:text-xl font-bold text-amber-200 tracking-wide font-serif">
+            <h2 id="inventory-title" className="text-lg sm:text-xl font-bold text-amber-200 tracking-wide font-serif">
               Equipamento & Inventário • {hero.name}
             </h2>
           </div>
@@ -135,7 +253,7 @@ export function InventoryPanel({ hero, onUpdateHero, onClose, onUseItem }: Inven
               <Scale size={14} /> {totalWeight.toFixed(1)} / {maxWeight} kg
             </span>
             <button
-              onClick={onClose}
+              onClick={onClose} aria-label="Fechar inventário"
               className="p-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-zinc-700 transition-colors"
             >
               <X size={18} />
@@ -144,7 +262,7 @@ export function InventoryPanel({ hero, onUpdateHero, onClose, onUseItem }: Inven
         </div>
 
         {/* Body: Paper Doll (Left) & Grid Inventory (Right) */}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-4 overflow-y-auto flex-1 p-1 scrollbar-thin">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-4 overflow-y-auto overflow-x-hidden flex-1 min-h-0 p-1 pr-2 scrollbar-thin">
           {/* LEFT: PAPER DOLL (5 cols on md) */}
           <div className="md:col-span-5 bg-gradient-to-b from-zinc-900/90 to-black/80 border border-zinc-800 rounded-2xl p-4 flex flex-col items-center justify-between relative min-h-[380px]">
             <span className="text-xs uppercase tracking-widest text-amber-400/80 font-bold mb-2">
@@ -217,38 +335,45 @@ export function InventoryPanel({ hero, onUpdateHero, onClose, onUseItem }: Inven
           <div className="md:col-span-7 bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4 flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <span className="text-xs uppercase tracking-widest text-zinc-400 font-bold">
-                Mochila de Aventura ({Object.keys(ITEMS_CATALOG).length} itens catalogados)
+                Mochila de Aventura ({inventoryStacks.reduce((total, stack) => total + stack.quantity, 0)} unidades)
               </span>
               <span className="text-[11px] text-amber-400">Toque em um item para equipar ou usar</span>
             </div>
 
             {/* Grid of Available Items */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 overflow-y-auto max-h-[330px] p-1 scrollbar-thin">
-              {Object.values(ITEMS_CATALOG).map((item) => {
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 overflow-y-auto max-h-[42dvh] min-h-0 p-1 scrollbar-thin">
+              {ownedInventoryItems.map(({ item, quantity, catalogKnown }) => {
                 const isEquipped = Object.values(equipment).includes(item.id);
 
-                const rarityBorders = {
+                const rarityBorders: Record<string, string> = {
                   comum: 'border-zinc-700 bg-zinc-950/70',
                   incomum: 'border-emerald-600/70 bg-emerald-950/20 text-emerald-300',
                   raro: 'border-blue-600/70 bg-blue-950/20 text-blue-300',
+                  muito_raro: 'border-purple-600/70 bg-purple-950/20 text-purple-300',
                   epico: 'border-purple-600/70 bg-purple-950/20 text-purple-300',
                   lendario: 'border-amber-500/80 bg-amber-950/30 text-amber-300'
-                }[item.rarity];
+                };
+                const borderClass = rarityBorders[item.rarity] || 'border-zinc-700 bg-zinc-950/70';
 
                 return (
                   <button
                     key={item.id}
                     onClick={() => setSelectedItem(item)}
-                    className={`relative flex flex-col p-2.5 rounded-xl border text-left transition-all hover:scale-[1.02] ${rarityBorders} ${
+                    className={`relative flex flex-col p-2.5 rounded-xl border text-left transition-all hover:scale-[1.02] ${borderClass} ${
                       selectedItem?.id === item.id ? 'ring-2 ring-amber-400' : ''
                     }`}
                   >
+                    <span className="self-start mb-2 bg-zinc-800/95 border border-zinc-600 text-zinc-100 text-[9px] font-black px-1.5 rounded">
+                      x{quantity}
+                    </span>
+
                     {isEquipped && (
                       <span className="absolute top-1 right-1 bg-amber-500 text-black text-[9px] font-black px-1 rounded">
                         EQUIPADO
                       </span>
                     )}
-                    <span className="text-xs font-bold text-zinc-100 truncate">{item.name}</span>
+                    <img src={`/art/ui/icon-${item.type === 'consumivel' ? 12 : item.type === 'arma' ? 0 : item.type === 'armadura' || item.type === 'escudo' ? 1 : /tocha/i.test(item.name) ? 17 : 5}.webp`} alt="" width={48} height={48} className="dd-item-art" />
+                    <span className="text-xs font-bold text-zinc-100 break-words">{item.name}</span>
                     <span className="text-[10px] text-zinc-400 capitalize">{item.type}</span>
                     <div className="flex items-center justify-between mt-2 text-[10px] font-mono text-zinc-400">
                       <span>{item.weight} kg</span>
@@ -271,7 +396,7 @@ export function InventoryPanel({ hero, onUpdateHero, onClose, onUseItem }: Inven
                       {selectedItem.rarity}
                     </span>
                   </div>
-                  <p className="text-xs text-zinc-300 line-clamp-2 mt-0.5">
+                  <p className="text-xs text-zinc-300 whitespace-normal break-words mt-1 leading-relaxed">
                     {selectedItem.description}
                   </p>
                 </div>
@@ -285,7 +410,7 @@ export function InventoryPanel({ hero, onUpdateHero, onClose, onUseItem }: Inven
                       <Heart size={14} />
                       <span>Usar</span>
                     </button>
-                  ) : (
+                  ) : getEquipSlotForItem(selectedItem) ? (
                     <button
                       onClick={() => handleEquip(selectedItem)}
                       className="bg-amber-600 hover:bg-amber-500 text-zinc-950 font-bold text-xs px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1 shadow"
@@ -293,6 +418,10 @@ export function InventoryPanel({ hero, onUpdateHero, onClose, onUseItem }: Inven
                       <Check size={14} />
                       <span>Equipar</span>
                     </button>
+                  ) : (
+                    <span className="text-[11px] text-zinc-400 px-2 py-1">
+                      Item guardado na mochila
+                    </span>
                   )}
                   <button
                     onClick={() => setSelectedItem(null)}

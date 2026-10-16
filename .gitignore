@@ -48,3 +48,12 @@ next-env.d.ts
 .env.*
 node_modules/
 dist/
+
+# Local SQLite database
+/data/
+
+# Local backup files
+*.bak
+
+.vercel
+.env*

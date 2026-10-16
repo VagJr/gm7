@@ -1,34 +1,37 @@
-# Crônicas do Vazio
+# Dragons and Dungeons
 
-Aplicação de RPG compatível com a quinta edição revisada de 2024. Referência: SRD 5.2.1, sob CC BY 4.0.
+RPG de fantasia em Valdoria: campanhas solo e cooperativas por convite, mundo online compartilhado e combate tático. Versão **0.2.0 alpha**.
 
-## Estado da implementação
+Publicado em https://dragons-and-dungeons-nu.vercel.app.
 
-Versão inicial funcional, não uma automação integral de todas as regras do jogo.
+## Implementação
 
-- Mesas persistentes em D1, membros por convite e controle de versão otimista.
-- Fichas editáveis: 12 classes, 9 espécies, antecedentes, níveis, atributos, perícias, especialização, salvaguardas, PV, CA, equipamento, condições, espaços de magia, características e história.
-- Dados no servidor com crypto.getRandomValues, vantagem/desvantagem, iniciativa, ataque simples, crítico, dano, turnos e encontro original.
-- Campanha original com três locais, mapa com posicionamento livre, NPCs e diário persistente.
-- Compêndio com 364 páginas do SRD e índice de 330 criaturas. Texto em inglês, interface em português.
-- Gemini 2.5 Flash via servidor, chave apenas em memória no cliente, pesquisa opcional, fontes no diário e prompt que impede a narrativa de ser autoridade para o estado mecânico.
+- React 19, Next.js 16 e TypeScript; cenário Three.js com câmera ortográfica, miniaturas ilustradas, árvores, objetos, movimento por caminhos e efeitos.
+- Seis regiões de 64 × 64 casas, com distritos ilustrados, estradas, rios e pontos de exploração. As masmorras usam atividades persistidas.
+- Menu e introdução próprios, logo e 72 recortes de duas folhas 6 × 6. A vila tem uma nova camada de arte sem grade ou legendas.
+- Vercel Functions e Postgres compartilhado no Neon Free. SQLite fica disponível como alternativa local sem DATABASE_URL.
+- Cookies assinados, autorização por participante, convites privados, controle de versões e atualizações SSE. As rotas antigas de exclusão global estão bloqueadas.
+- Diretora procedural com contexto de economia, ecossistema e memória. Narração Groq/Gemini depende de credencial válida; o fallback procedural foi testado.
 
-## Limitações explícitas
+## Rodar localmente
 
-A ficha permite preenchimento manual. Não há validação automática de todas as combinações legais de criação, multiclasse ou progressão. Magias, características de classe, ações bônus, reações, concentração, resistência, morte, alcance, movimento legal e efeitos de condições ainda exigem adjudicação do anfitrião. O encontro automatizado usa uma criatura original, não pretende simular todo o bestiário. A IA não altera estado mecânico. A recuperação do SRD usa correspondência lexical em inglês; a busca web complementa essa referência. Não houve teste real com chave Gemini. Cotas gratuitas variam por conta e podem mudar.
+Node >=22.13.0. Instale com `npm run install:ci`, execute `npm run dev` e abra http://localhost:5173. Use apenas um servidor local. O limite de memória e o número de trabalhadores estão reduzidos para o desenvolvimento.
 
-Acesso privado é limitado ao proprietário. Convites da mesa não alteram a política de acesso do site. Jogadores adicionais precisam de acesso ao site antes de entrar com o código.
+Quando DATABASE_URL está presente, o desenvolvimento usa o banco compartilhado. Testes de sessão criam campanhas com prefixo [QA] e preservam os saves existentes. Não publique credenciais nem arquivos .env.
 
-## Execução
+## Verificação
 
-Use Node >=22.13, npm run install:ci, npm run db:generate, npm run build e npm run dev. Aplique as migrações locais conforme o README do starter. O diretório work contém apenas ferramentas temporárias necessárias ao ambiente Windows restrito, não faz parte da aplicação publicada. Não há chave de API no código ou na configuração.
+- `npm run typecheck`: tipos da aplicação.
+- `npm run test:all`: oito suítes existentes, 109 verificações. Algumas são verificações estáticas; o conjunto não certifica fidelidade completa ao SRD.
+- `node scripts/test-dragons-world.mjs`: seis regiões, colisões, caminhos, migração, criação autoritativa e isolamento do movimento em relação ao combate de outro jogador.
+- `npm run test:session`: criação privada, autorização, convite e proteção dos saves.
+- `node scripts/test-coop-flow.mjs`: dois jogadores, convite, recuperação de conflito, provisões sem duplicação e movimento recebido por SSE. Aceita TEST_BASE_URL para verificar a publicação.
+- Capturas e relatório dos testes visuais em docs/visual-qa. Os prompts das artes estão em docs/art-prompts.json e docs/map-cleanup-prompt.json; geração pelo image_gen integrado.
 
-## Validação realizada
+## Limites atuais
 
-TypeScript sem erros e build de produção concluído. Testes de motor: modificadores, proficiência, limites de dados, vantagem, crítico, PV mínimo e validação básica de ficha. Testes HTTP: autenticação local, persistência, ficha, conflitos de versão, iniciativa, isolamento anônimo, busca de criaturas e erro sem chave Gemini. Não houve teste visual no navegador nem validação completa das regras de D&D.
+Este é um alpha. O cenário mistura superfícies ilustradas, sprites de miniaturas e objetos 3D; ainda não corresponde a um mundo totalmente modelado. Existem regras e habilidades que dependem de arbitragem ou mantêm adaptações legadas. O catálogo de 339 magias não significa que cada detalhe do SRD esteja implementado.
 
-## Atribuição
+Os planos gratuitos têm cotas. O mundo compartilhado tem limite atual de 32 personagens e não foi certificado sob carga MMO. O transporte pode levar até três segundos entre instâncias. A arquitetura grava o estado da sala como um documento com controle de versão; carga maior exigirá particionamento, simulação e persistência mais granular. Não há promessa de serviço gratuito sem limites.
 
-This work includes material from the System Reference Document 5.2.1 (“SRD 5.2.1”) by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License, available at https://creativecommons.org/licenses/by/4.0/legalcode.
-
-A interface e a campanha são originais; textos de referência foram extraídos do PDF original. A extração pode perder detalhes de tabelas; cada resultado possui um link para o PDF.
+A campanha completa, todas as classes, todas as regiões em combate, dispositivos móveis físicos, backup/restauração e uso real de provedores de IA ainda precisam de validação adicional.

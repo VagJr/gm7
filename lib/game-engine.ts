@@ -1,4 +1,6 @@
-import { isGridTileWalkable, type CollisionPolygon } from './collision-system';
+import { isGridTileWalkable, type CollisionPolygon, type BiomeType } from './collision-system';
+
+export type { BiomeType };
 
 export const abilities = ['Força', 'Destreza', 'Constituição', 'Inteligência', 'Sabedoria', 'Carisma'];
 export const classes = [
@@ -24,6 +26,31 @@ export const mod = (n: number) => Math.floor((n - 10) / 2);
 export const prof = (level: number) => 2 + Math.floor((level - 1) / 4);
 export const signed = (n: number) => (n >= 0 ? '+' : '') + n;
 
+// D&D 5e Official Point Buy & Standard Array Rules (SRD 5.1 / 2024)
+export const POINT_BUY_COSTS: Record<number, number> = {
+  8: 0,
+  9: 1,
+  10: 2,
+  11: 3,
+  12: 4,
+  13: 5,
+  14: 7,
+  15: 9
+};
+
+export const TOTAL_POINT_BUY_POINTS = 27;
+export const STANDARD_ARRAY = [15, 14, 13, 12, 10, 8];
+
+export function calculatePointBuyScoreCost(score: number): number {
+  if (score <= 8) return 0;
+  if (score > 15) return 999;
+  return POINT_BUY_COSTS[score] ?? 999;
+}
+
+export function calculateTotalPointBuyCost(baseScores: number[]): number {
+  return baseScores.reduce((acc, score) => acc + calculatePointBuyScoreCost(score), 0);
+}
+
 export type EquipmentSlots = {
   helm?: string;
   armor?: string;
@@ -33,8 +60,8 @@ export type EquipmentSlots = {
   accessory?: string;
 };
 
-export type ItemRarity = 'comum' | 'incomum' | 'raro' | 'epico' | 'lendario';
-export type ItemType = 'arma' | 'armadura' | 'escudo' | 'elmo' | 'botas' | 'acessorio' | 'consumivel' | 'outro';
+export type ItemRarity = 'comum' | 'incomum' | 'raro' | 'muito_raro' | 'epico' | 'lendario';
+export type ItemType = 'arma' | 'armadura' | 'escudo' | 'elmo' | 'botas' | 'acessorio' | 'consumivel' | 'pocao' | 'pergaminho' | 'anel' | 'geral' | 'outro';
 
 export type ItemDefinition = {
   id: string;
@@ -55,6 +82,9 @@ export type ItemDefinition = {
 };
 
 export const ITEMS_CATALOG: Record<string, ItemDefinition> = {
+  'maca': {id:'maca',name:'Maça',type:'arma',rarity:'comum',description:'Arma simples de impacto.',weight:2,value:5,damage:'1d6',icon:'Sword'},
+  'cajado': {id:'cajado',name:'Bordão',type:'arma',rarity:'comum',description:'Bordão versátil de madeira.',weight:2,value:2,damage:'1d6',icon:'Wand'},
+  'machado-grande': {id:'machado-grande',name:'Machado Grande',type:'arma',rarity:'comum',description:'Machado de duas mãos.',weight:3.5,value:30,damage:'1d12',icon:'Sword'},
   'espada-longa': {
     id: 'espada-longa',
     name: 'Espada Longa',
@@ -258,7 +288,7 @@ export const SPELLS_CATALOG: SpellDefinition[] = [
     level: 0,
     school: 'Evocação',
     castTime: '1 Ação',
-    rangeSquares: 12,
+    rangeSquares: 24,
     damageFormula: '1d10',
     description: 'Dispara um feixe incandescente. Ataque mágico à distância.',
     icon: 'Flame',
@@ -270,7 +300,7 @@ export const SPELLS_CATALOG: SpellDefinition[] = [
     level: 0,
     school: 'Evocação',
     castTime: '1 Ação',
-    rangeSquares: 12,
+    rangeSquares: 24,
     damageFormula: '1d10',
     description: 'Um raio de energia crepitante atinge o inimigo.',
     icon: 'Zap',
@@ -286,7 +316,7 @@ export const SPELLS_CATALOG: SpellDefinition[] = [
     damageFormula: '1d8',
     description: 'Eletricidade estala nas pontas dos seus dedos no combate corpo a corpo.',
     icon: 'Zap',
-    classes: ['Mago', 'Feiticeiro', 'Bruxo']
+    classes: ['Mago', 'Feiticeiro']
   },
   {
     id: 'chama-sagrada',
@@ -305,13 +335,13 @@ export const SPELLS_CATALOG: SpellDefinition[] = [
     id: 'curar-ferimentos',
     name: 'Curar Ferimentos',
     level: 1,
-    school: 'Evocação',
+    school: 'Abjuração',
     castTime: '1 Ação',
     rangeSquares: 1,
-    healFormula: '1d8+3',
+    healFormula: '2d8',
     description: 'Uma criatura tocada recupera pontos de vida.',
     icon: 'Heart',
-    classes: ['Clérigo', 'Bardo', 'Druida', 'Paladino']
+    classes: ['Clérigo', 'Bardo', 'Druida', 'Paladino', 'Patrulheiro']
   },
   {
     id: 'missoes-magicos',
@@ -319,7 +349,7 @@ export const SPELLS_CATALOG: SpellDefinition[] = [
     level: 1,
     school: 'Evocação',
     castTime: '1 Ação',
-    rangeSquares: 12,
+    rangeSquares: 24,
     damageFormula: '3d4+3',
     description: 'Três dardos luminosos acertam infalivelmente seus alvos.',
     icon: 'Sparkles',
@@ -359,8 +389,8 @@ export const SPELLS_CATALOG: SpellDefinition[] = [
     level: 2,
     school: 'Evocação',
     castTime: '1 Ação',
-    rangeSquares: 12,
-    damageFormula: '4d6',
+    rangeSquares: 24,
+    damageFormula: '2d6',
     description: 'Três raios de fogo atingem alvos com força tremenda.',
     icon: 'Flame',
     classes: ['Mago', 'Feiticeiro']
@@ -384,12 +414,15 @@ export const TACTICAL_ACTIONS: ActionDefinition[] = [
 ];
 
 export type Character = {
+  discoveries?: Record<string, number>;
+  portrait?: number;
   id: string;
   owner: string;
   name: string;
   className: string;
   species: string;
   background: string;
+  originBonuses?: number[];
   level: number;
   stats: number[];
   skills: string[];
@@ -407,6 +440,10 @@ export type Character = {
   usedSlots: number[];
   features: string;
   spells: string;
+  knownCantrips?: string[];
+  preparedSpells?: string[];
+  spellbook?: string[];
+  spellSelectionVersion?: number;
   inventory: string;
   notes: string;
   conditions: string[];
@@ -417,9 +454,42 @@ export type Character = {
   deathSuccess: number;
   deathFail: number;
   exhaustion: number;
+  secondWindSpent?: number;
+  rageSpent?: number;
+  raging?: boolean;
+  rageEndsAtRound?: number;
   equipment?: EquipmentSlots;
+  inventoryItemData?: Record<string, ItemDefinition>;
+  equipmentInventoryVersion?: number;
   gold?: number;
   partyId?: string;
+  questProgress?: Record<string, boolean>;
+  worldFlags?: Record<string, boolean>;
+  act?: 1 | 2 | 3;
+  location?: number;
+  biome?: BiomeType;
+  activeMicroAdventureId?: string;
+  activeActivityId?: string;
+  updatedAt?: number;
+  lastSeen?: number;
+  hitDiceSpent?: number;
+  lastShortRestAt?: number;
+  lastLongRestAt?: number;
+  activeMicroAdventureStage?: number;
+  adventureCompletions?: Record<string, number>;
+  adventureCooldowns?: Record<string, number>;
+  campaignProof?: Record<string, boolean>;
+  campaignProofVersion?: number;
+  concentrationEffectId?: string;
+  temporaryHp?: number;
+  damageResistances?: string[];
+  damageVulnerabilities?: string[];
+  damageImmunities?: string[];
+  conditionImmunities?: string[];
+  mysticArcanumSpells?: string[];
+  mysticArcanumSpent?: number[];
+  freeHuntersMarkSpent?: number;
+  arcaneRecoverySpent?: boolean;
 };
 
 export type PartyInvite = {
@@ -435,16 +505,29 @@ export type PartyInvite = {
 
 export type Enemy = {
   id: string;
+  cr?: number;
+  aiStyle?: 'brute' | 'skirmisher' | 'boss' | 'guardian' | 'caster' | 'dragon';
   name: string;
   hp: number;
   maxHp: number;
   ac: number;
   attack: number;
   damage: string;
+  weapon?: string;
   initiative: number;
   x: number;
   y: number;
   conditions?: string[];
+  temporaryHp?: number;
+  damageResistances?: string[];
+  damageVulnerabilities?: string[];
+  damageImmunities?: string[];
+  conditionImmunities?: string[];
+  biome?: BiomeType;
+  partyId?: string;
+  ownerCharId?: string;
+  updatedAt?: number;
+  adventureId?: string;
 };
 
 export type Log = {
@@ -455,7 +538,105 @@ export type Log = {
   sources?: { title: string; url: string }[];
 };
 
+export type NpcMemory = {
+  timestamp: number;
+  heroId?: string;
+  heroName?: string;
+  summary: string;
+};
+
+export type NpcEntity = {
+  id: string;
+  name: string;
+  role: string;
+  description: string;
+  dialogue?: string[];
+  species?: string;
+  personality?: string;
+  history?: string;
+  currentGoal?: string;
+  secret?: string;
+  relationships?: string[];
+  memories?: NpcMemory[];
+  lastInteractionAt?: number;
+  x?: number;
+  y?: number;
+  icon?: string;
+  biome?: BiomeType;
+};
+
+export interface GroundCorpse {
+  id: string;
+  name: string;
+  enemyName: string;
+  x: number;
+  y: number;
+  gold: number;
+  items: string[];
+  itemData?: Record<string, ItemDefinition>;
+  biome?: BiomeType;
+  slainBy?: string;
+  createdAt: number;
+}
+
+export interface EconomyContext {
+  inflationMultiplier?: number;
+  priceMultiplier?: number;
+  scarcityNotes?: string;
+  potionScarcity?: boolean;
+  caravanDelayed?: boolean;
+  narrativeNotice?: string;
+  faunaCap?: number;
+  shopStock?: any[];
+  updatedAt: number;
+}
+
+export type ActiveSpellAppliedCondition = {
+  targetType: 'character' | 'enemy';
+  targetId: string;
+  condition: string;
+};
+
+export type ActiveSpellEffect = {
+  id: string;
+  spellName: string;
+  casterId: string;
+  spellLevel: number;
+  concentration: boolean;
+  createdRound: number;
+  expiresAtRound?: number;
+  characterTargetIds: string[];
+  enemyTargetIds: string[];
+  appliedConditions: ActiveSpellAppliedCondition[];
+  description: string;
+  requiresAdjudication?: boolean;
+};
+
+export type WorldActivityType =
+  | 'campaign'
+  | 'microadventure'
+  | 'dungeon'
+  | 'contract'
+  | 'world_event';
+
+export type WorldActivityState = {
+  id: string;
+  type: WorldActivityType;
+  scopeKey: string;
+  status:
+    | 'available'
+    | 'active'
+    | 'completed'
+    | 'abandoned';
+  title?: string;
+  payload: Record<string, any>;
+  createdAt: number;
+  updatedAt: number;
+};
+
 export type State = {
+  worldMapVersion?: number;
+  directorMemory?: Record<string, { lastEventTimestamp: number; lastCombatEndTimestamp: number; tension: number; history: import('./sandbox-director').DirectorDecision[] }>;
   characters: Character[];
   enemies: Enemy[];
   logs: Log[];
@@ -465,33 +646,68 @@ export type State = {
   combat: boolean;
   location: number;
   notes: string;
-  npcs: { id: string; name: string; role: string; description: string; dialogue?: string[]; x?: number; y?: number; icon?: string }[];
+  npcs: NpcEntity[];
+  corpses?: GroundCorpse[];
+  economyContext?: EconomyContext;
   questProgress?: Record<string, boolean>;
+  worldFlags?: Record<string, boolean>;
+  activeMicroAdventureId?: string;
+  worldSchemaVersion?: number;
+  activities?: Record<string, WorldActivityState>;
   actionUsed?: boolean;
   bonusActionUsed?: boolean;
+  reactionUsedBy?: Record<string, boolean>;
+  reactionPolicyBy?: Record<string, 'opportunity' | 'shield' | 'ready-melee' | 'counterspell'>;
+  movementBonusSquares?: number;
+  disengagedActorId?: string;
+  spellSlotUsedThisTurn?: boolean;
+  spellEffects?: ActiveSpellEffect[];
   movementUsed?: number;
-  biome?: 'village' | 'forest' | 'dungeon';
+  biome?: BiomeType;
+  combatMode?: 'tactical' | 'free';
+  combatPartyId?: string;
+  combats?: Record<string, import('./combat-instances').CombatSnapshot>;
   partyInvites?: PartyInvite[];
+  act?: 1 | 2 | 3;
+  updatedAt?: number;
 };
 
 export const locations = [
   {
     name: 'Vila do Rio Verde',
-    label: 'Prólogo • Assentamento de Valdoria',
+    label: 'Hub Principal • Assentamento de Valdoria',
     biome: 'village' as const,
     text: 'O sol da manhã ilumina as colinas de Vila do Rio Verde. As águas do riacho correm límpidas sob as pontes de madeira rústica. Na praça central, o Ancião Doran e a guarda reúnem bravos aventureiros para uma missão urgente.'
   },
   {
     name: 'A Floresta dos Sussurros',
-    label: 'Ato I • Bosques Profundos & Menir Sagrado',
+    label: 'Bosque Sagrado • Menir Druídico & Lago',
     biome: 'forest' as const,
     text: 'As copas altas dos carvalhos bloqueiam quase toda a luz do sol. O cheiro de terra úmida preenche o ar. Diante do lago sereno e do círculo de pedras sagradas, sombras rastejantes e sentinelas espreitam entre as folhagens.'
   },
   {
+    name: 'Pátio das Ruínas da Abadia',
+    label: 'Fortificação Externa • Arcos Caídos & Cinzas',
+    biome: 'ruins' as const,
+    text: 'Arcos de pedra quebrados erguem-se contra o vento gélido. Entre as colunas destruídas da antiga abadia, cultistas das cinzas realizam vigílias macabras em volta de altares calcinados.'
+  },
+  {
     name: 'Catacumbas dos Três Selos',
-    label: 'Ato II • Câmaras Subterrâneas & Santuário',
+    label: 'Masmorra Subterrânea • Criptas dos Escribas',
     biome: 'dungeon' as const,
-    text: 'Passos ecoam sob as lajes antigas de pedra e as piscinas rituais de água fria. O ar cheira a ozônio arcano e cinzas ancestrais. No coração do santuário, Malakor ergue-se em guarda dos segredos proibidos.'
+    text: 'Passos ecoam sob as lajes antigas de pedra e as piscinas rituais de água fria. O ar cheira a ozônio arcano e cinzas ancestrais. Portas de obsidiana trancam os segredos mais profundos de Valdoria.'
+  },
+  {
+    name: 'Desfiladeiro da Fenda Escarpada',
+    label: 'Trilha Vulcânica • Fendas de Enxofre & Ninhos',
+    biome: 'canyon' as const,
+    text: 'Paredões de basalto escuro sobem em direção ao céu tingido de fumaça. Vapores quentes de enxofre sobem das fendas rochosas, onde batedores e ninhos de wyrmlings espreitam os desatentos.'
+  },
+  {
+    name: 'O Covil de Ignisrax',
+    label: 'Cratera Magmática • Arena do Dragão Vermelho',
+    biome: 'lair' as const,
+    text: 'Um calor sufocante toma conta do ar. Pilares gigantescos de rocha negra sustentam uma caverna colossal, onde rios de magma banham montanhas de ouro e cinzas. Ao centro, olhos reptilianos incandescentes se abrem.'
   }
 ];
 
@@ -508,9 +724,24 @@ export function initialState(): State {
     notes: '',
     actionUsed: false,
     bonusActionUsed: false,
+    reactionUsedBy: {},
+    reactionPolicyBy: {},
+    movementBonusSquares: 0,
+    spellSlotUsedThisTurn: false,
+    spellEffects: [],
     movementUsed: 0,
     biome: 'village',
     questProgress: {},
+    worldFlags: {},
+    act: 1,
+    worldSchemaVersion: 1,
+    activities: {},
+    corpses: [],
+    economyContext: {
+      inflationMultiplier: 1.0,
+      scarcityNotes: 'Mercado e suprimentos estáveis na vila.',
+      updatedAt: Date.now()
+    },
     npcs: [
       {
         id: 'doran',
@@ -520,6 +751,7 @@ export function initialState(): State {
         x: 6,
         y: 4,
         icon: 'Crown',
+        biome: 'village',
         dialogue: [
           'Agradeço por terem vindo! Estranhas criaturas de cinzas foram avistadas rondando a ponte leste da nossa vila.',
           'Dizem que os selos da antiga floresta foram rompidos. Se vocês puderem purificar o santuário, a vila recompensará vocês com ouro e honra.',
@@ -534,6 +766,7 @@ export function initialState(): State {
         x: 2,
         y: 3,
         icon: 'FlaskConical',
+        biome: 'village',
         dialogue: [
           'Saudações, aventureiros! A floresta lá fora é implacável com os desatentos.',
           'Guardem estas Poções de Cura na mochila. Quando precisarem, basta beber ou aplicar no aliado tocando na poção: restaura 2d4 + 2 PV instantaneamente!',
@@ -548,6 +781,7 @@ export function initialState(): State {
         x: 9,
         y: 6,
         icon: 'Shield',
+        biome: 'village',
         dialogue: [
           'Atenção, combatentes! Em batalha sob as regras táticas 5e, cada um tem direito a 1 Ação e seu deslocamento por turno.',
           'Nunca gastem seu ataque sem verificar a cobertura do terreno. Árvores e muros concedem vantagem tática.',
@@ -635,9 +869,21 @@ export function starterState(ownerId = 'local-hero'): State {
     notes: 'Prólogo em Vila do Rio Verde: conversar com o Ancião Doran, estocar poções com Elenor e receber instruções táticas de Kaelen.',
     actionUsed: false,
     bonusActionUsed: false,
+    reactionUsedBy: {},
+    reactionPolicyBy: {},
+    movementBonusSquares: 0,
+    spellSlotUsedThisTurn: false,
+    spellEffects: [],
     movementUsed: 0,
     biome: 'village',
     questProgress: {},
+    act: 1,
+    corpses: [],
+    economyContext: {
+      inflationMultiplier: 1.0,
+      scarcityNotes: 'Mercado e suprimentos estáveis na vila.',
+      updatedAt: Date.now()
+    },
     npcs: [
       {
         id: 'doran',
@@ -647,6 +893,7 @@ export function starterState(ownerId = 'local-hero'): State {
         x: 6,
         y: 4,
         icon: 'Crown',
+        biome: 'village',
         dialogue: [
           'Agradeço por terem vindo! Estranhas criaturas de cinzas foram avistadas rondando a ponte leste da nossa vila.',
           'Dizem que os selos da antiga floresta foram rompidos. Se vocês puderem purificar o santuário, a vila recompensará vocês com ouro e honra.',
@@ -661,6 +908,7 @@ export function starterState(ownerId = 'local-hero'): State {
         x: 2,
         y: 3,
         icon: 'FlaskConical',
+        biome: 'village',
         dialogue: [
           'Saudações, aventureiros! A floresta lá fora é implacável com os desatentos.',
           'Guardem estas Poções de Cura na mochila. Quando precisarem, basta beber ou aplicar no aliado tocando na poção: restaura 2d4 + 2 PV instantaneamente!',
@@ -675,6 +923,7 @@ export function starterState(ownerId = 'local-hero'): State {
         x: 9,
         y: 6,
         icon: 'Shield',
+        biome: 'village',
         dialogue: [
           'Atenção, combatentes! Em batalha sob as regras táticas 5e, cada um tem direito a 1 Ação e seu deslocamento por turno.',
           'Nunca gastem seu ataque sem verificar a cobertura do terreno. Árvores e muros concedem vantagem tática.',
@@ -735,6 +984,9 @@ export function validateCharacter(c: Character): Character {
   if (!Number.isInteger(c.level) || c.level < 1 || c.level > 20 || c.stats.length !== 6 || c.stats.some(x => !Number.isInteger(x) || x < 1 || x > 30)) {
     throw Error('Confira o nível e os seis atributos.');
   }
+  if (c.level === 1 && c.stats.some(x => x > 20)) {
+    throw Error('Atributos no nível 1 não podem ultrapassar 20 (regras oficiais D&D 5e).');
+  }
   for (const n of [c.hp, c.maxHp, c.ac, c.speed, c.attack, c.spellAbility, c.exhaustion]) {
     if (!Number.isFinite(n)) throw Error('Valor numérico inválido.');
   }
@@ -770,7 +1022,7 @@ export function newCharacter(): Character {
     usedSlots: [0, 0, 0, 0, 0, 0, 0, 0, 0],
     features: '',
     spells: '',
-    inventory: 'Cota de Malha\nEspada Longa\nEscudo de Carvalho e Ferro\nMochila de Aventureiro\nTochas (10)\nPoção de Cura (2)',
+    inventory: 'Mochila de Aventureiro\nTochas (10)\nPoção de Cura (2)',
     notes: '',
     conditions: [],
     x: 2,
@@ -785,8 +1037,46 @@ export function newCharacter(): Character {
       mainHand: 'espada-longa',
       offHand: 'escudo'
     },
-    gold: 50
+    equipmentInventoryVersion: 2,
+    gold: 50,
+    questProgress: {},
+    worldFlags: {},
+    act: 1,
+    location: 0,
+    biome: 'village'
   };
+}
+
+export function syncPartyProgression(
+  characters: Character[],
+  partyId: string | undefined,
+  questUpdates: Record<string, boolean>,
+  flagUpdates?: Record<string, boolean>
+): void {
+  if (!partyId) return;
+  const now = Date.now();
+  for (const c of characters) {
+    if (c.partyId === partyId) {
+      if (!c.questProgress) c.questProgress = {};
+      Object.assign(c.questProgress, questUpdates);
+      if (flagUpdates) {
+        if (!c.worldFlags) c.worldFlags = {};
+        Object.assign(c.worldFlags, flagUpdates);
+      }
+      c.updatedAt = now;
+    }
+  }
+}
+
+export function mergePartyProgress(inviter: Character, receiver: Character): {
+  questProgress: Record<string, boolean>;
+  worldFlags: Record<string, boolean>;
+  act: 1 | 2 | 3;
+} {
+  const mergedQuests = { ...(inviter.questProgress || {}), ...(receiver.questProgress || {}) };
+  const mergedFlags = { ...(inviter.worldFlags || {}), ...(receiver.worldFlags || {}) };
+  const highestAct = Math.max(inviter.act || 1, receiver.act || 1) as 1 | 2 | 3;
+  return { questProgress: mergedQuests, worldFlags: mergedFlags, act: highestAct };
 }
 
 export const DND_5E_XP_TABLE = [
@@ -831,29 +1121,173 @@ export function isAsiLevel(className: string, level: number): boolean {
   return false;
 }
 
-export function getSpellSlotsForClass(className: string, level: number): number[] {
-  const slots = [0, 0, 0, 0, 0, 0, 0, 0, 0];
-  const fullCasters = ['Mago', 'Clérigo', 'Druida', 'Feiticeiro', 'Bardo'];
-  const halfCasters = ['Paladino', 'Patrulheiro'];
+export function getSpellSlotsForClass(
+  className: string,
+  level: number
+): number[] {
+  const normalizedLevel =
+    Math.max(
+      1,
+      Math.min(
+        20,
+        Math.floor(level)
+      )
+    );
 
-  if (fullCasters.includes(className)) {
-    if (level === 1) slots[0] = 2;
-    else if (level === 2) slots[0] = 3;
-    else if (level === 3) { slots[0] = 4; slots[1] = 2; }
-    else if (level === 4) { slots[0] = 4; slots[1] = 3; }
-    else if (level >= 5) { slots[0] = 4; slots[1] = 3; slots[2] = 2; }
-  } else if (halfCasters.includes(className)) {
-    if (level === 2) slots[0] = 2;
-    else if (level === 3) slots[0] = 3;
-    else if (level === 4) slots[0] = 3;
-    else if (level >= 5) { slots[0] = 4; slots[1] = 2; }
-  } else if (className === 'Bruxo') {
-    if (level === 1) slots[0] = 1;
-    else if (level === 2) slots[0] = 2;
-    else if (level >= 3 && level < 5) slots[1] = 2;
-    else if (level >= 5) slots[2] = 2;
+  const ZERO = () =>
+    [
+      0, 0, 0,
+      0, 0, 0,
+      0, 0, 0
+    ];
+
+  const FULL:
+    number[][] = [
+      [2,0,0,0,0,0,0,0,0],
+      [3,0,0,0,0,0,0,0,0],
+      [4,2,0,0,0,0,0,0,0],
+      [4,3,0,0,0,0,0,0,0],
+      [4,3,2,0,0,0,0,0,0],
+      [4,3,3,0,0,0,0,0,0],
+      [4,3,3,1,0,0,0,0,0],
+      [4,3,3,2,0,0,0,0,0],
+      [4,3,3,3,1,0,0,0,0],
+      [4,3,3,3,2,0,0,0,0],
+      [4,3,3,3,2,1,0,0,0],
+      [4,3,3,3,2,1,0,0,0],
+      [4,3,3,3,2,1,1,0,0],
+      [4,3,3,3,2,1,1,0,0],
+      [4,3,3,3,2,1,1,1,0],
+      [4,3,3,3,2,1,1,1,0],
+      [4,3,3,3,2,1,1,1,1],
+      [4,3,3,3,3,1,1,1,1],
+      [4,3,3,3,3,2,1,1,1],
+      [4,3,3,3,3,2,2,1,1]
+    ];
+
+  const HALF:
+    number[][] = [
+      [2,0,0,0,0,0,0,0,0],
+      [2,0,0,0,0,0,0,0,0],
+      [3,0,0,0,0,0,0,0,0],
+      [3,0,0,0,0,0,0,0,0],
+      [4,2,0,0,0,0,0,0,0],
+      [4,2,0,0,0,0,0,0,0],
+      [4,3,0,0,0,0,0,0,0],
+      [4,3,0,0,0,0,0,0,0],
+      [4,3,2,0,0,0,0,0,0],
+      [4,3,2,0,0,0,0,0,0],
+      [4,3,3,0,0,0,0,0,0],
+      [4,3,3,0,0,0,0,0,0],
+      [4,3,3,1,0,0,0,0,0],
+      [4,3,3,1,0,0,0,0,0],
+      [4,3,3,2,0,0,0,0,0],
+      [4,3,3,2,0,0,0,0,0],
+      [4,3,3,3,1,0,0,0,0],
+      [4,3,3,3,1,0,0,0,0],
+      [4,3,3,3,2,0,0,0,0],
+      [4,3,3,3,2,0,0,0,0]
+    ];
+
+  if (
+    [
+      'Mago',
+      'Clérigo',
+      'Druida',
+      'Feiticeiro',
+      'Bardo'
+    ].includes(
+      className
+    )
+  ) {
+    return [
+      ...FULL[
+        normalizedLevel -
+        1
+      ]
+    ];
   }
-  return slots;
+
+  if (
+    [
+      'Paladino',
+      'Patrulheiro'
+    ].includes(
+      className
+    )
+  ) {
+    return [
+      ...HALF[
+        normalizedLevel -
+        1
+      ]
+    ];
+  }
+
+  if (
+    className ===
+      'Bruxo'
+  ) {
+    const result =
+      ZERO();
+
+    let slotCount =
+      1;
+
+    let slotLevel =
+      1;
+
+    if (
+      normalizedLevel >= 2
+    ) {
+      slotCount = 2;
+    }
+
+    if (
+      normalizedLevel >= 3
+    ) {
+      slotLevel = 2;
+    }
+
+    if (
+      normalizedLevel >= 5
+    ) {
+      slotLevel = 3;
+    }
+
+    if (
+      normalizedLevel >= 7
+    ) {
+      slotLevel = 4;
+    }
+
+    if (
+      normalizedLevel >= 9
+    ) {
+      slotLevel = 5;
+    }
+
+    if (
+      normalizedLevel >= 11
+    ) {
+      slotCount = 3;
+    }
+
+    if (
+      normalizedLevel >= 17
+    ) {
+      slotCount = 4;
+    }
+
+    result[
+      slotLevel - 1
+    ] =
+      slotCount;
+
+    return result;
+  }
+
+  return ZERO();
 }
 
 /**
@@ -862,9 +1296,15 @@ export function getSpellSlotsForClass(className: string, level: number): number[
 export function calculateEquippedStats(c: Character): Character {
   const next = { ...c };
   const eq = next.equipment || {};
+  const resolveEquippedItem =
+    (itemId?: string) =>
+      itemId
+        ? next.inventoryItemData?.[itemId] ||
+          ITEMS_CATALOG[itemId]
+        : undefined;
 
   // 1. Arma Principal
-  const mainHandItem = eq.mainHand ? ITEMS_CATALOG[eq.mainHand] : undefined;
+  const mainHandItem = resolveEquippedItem(eq.mainHand);
   if (mainHandItem && mainHandItem.type === 'arma') {
     next.weapon = mainHandItem.name;
     const strMod = mod(next.stats[0]);
@@ -884,7 +1324,7 @@ export function calculateEquippedStats(c: Character): Character {
 
   // 2. Armadura e CA (incluindo Defesa sem Armadura oficial 5e)
   let calculatedAc = 10 + mod(next.stats[1]); // CA base sem armadura
-  const armorItem = eq.armor ? ITEMS_CATALOG[eq.armor] : undefined;
+  const armorItem = resolveEquippedItem(eq.armor);
   if (!armorItem || !armorItem.baseAc) {
     // Unarmored Defense
     if (next.className === 'Bárbaro') {
@@ -908,21 +1348,21 @@ export function calculateEquippedStats(c: Character): Character {
   }
 
   // 3. Escudo na mão secundária (+2 CA oficial 5e)
-  const offHandItem = eq.offHand ? ITEMS_CATALOG[eq.offHand] : undefined;
+  const offHandItem = resolveEquippedItem(eq.offHand);
   if (offHandItem && offHandItem.acBonus) {
     calculatedAc += offHandItem.acBonus;
   }
 
   // 4. Elmo / Acessório
-  const helmItem = eq.helm ? ITEMS_CATALOG[eq.helm] : undefined;
+  const helmItem = resolveEquippedItem(eq.helm);
   if (helmItem && helmItem.acBonus) calculatedAc += helmItem.acBonus;
 
-  const accItem = eq.accessory ? ITEMS_CATALOG[eq.accessory] : undefined;
+  const accItem = resolveEquippedItem(eq.accessory);
   if (accItem && accItem.acBonus) calculatedAc += accItem.acBonus;
 
   // 5. Botas e Deslocamento
-  const baseSpeed = next.species === 'Anão' || next.species === 'Pequenino' || next.species === 'Halfling' || next.species === 'Gnomo' ? 7.5 : 9;
-  const bootsItem = eq.boots ? ITEMS_CATALOG[eq.boots] : undefined;
+  const baseSpeed = next.species === 'Golias' ? 10.5 : 9;
+  const bootsItem = resolveEquippedItem(eq.boots);
   if (bootsItem && bootsItem.id === 'botas-sombra') {
     next.speed = baseSpeed + 1.5;
   } else {
@@ -995,12 +1435,93 @@ export function determineAttackMode(
   return 'normal';
 }
 
+function isClearlyNonPhysicalDamageSource(
+  weapon?: string
+): boolean {
+  const value = String(weapon || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+
+  return [
+    'fogo',
+    'fire',
+    'igne',
+    'arcano',
+    'arcana',
+    'runic',
+    'vazio',
+    'void',
+    'sopro',
+    'breath',
+    'magia',
+    'magic',
+    'mistica',
+    'eldritch',
+    'sagrada',
+    'radiant',
+    'raio',
+    'lightning',
+    'chocante',
+    'trovao',
+    'thunder',
+    'necrot'
+  ].some((marker) =>
+    value.includes(marker)
+  );
+}
+
 export function resolveAttack(
   attacker: { name: string; attack: number; damage: string; conditions?: string[]; weapon?: string },
   target: { id?: string; name: string; ac: number; hp: number; conditions?: string[] },
   mode = 'normal',
   isRangedOverride?: boolean
 ): AttackResult {
+  /* SRD_3B_C1_EFFECTIVE_AC */
+  const c1TargetConditions =
+    (target.conditions || [])
+      .map((condition) =>
+        condition
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .toLowerCase()
+      )
+      .join(' | ');
+
+  let c1AcAdjustment = 0;
+
+  if (c1TargetConditions.includes('escudo arcano')) {
+    c1AcAdjustment += 5;
+  }
+
+  if (
+    c1TargetConditions.includes('shield of faith') ||
+    c1TargetConditions.includes('escudo da fe')
+  ) {
+    c1AcAdjustment += 2;
+  }
+
+  if (
+    c1TargetConditions.includes('haste') ||
+    c1TargetConditions.includes('acelerado')
+  ) {
+    c1AcAdjustment += 2;
+  }
+
+  if (
+    c1TargetConditions.includes('slow') ||
+    c1TargetConditions.includes('lentidao')
+  ) {
+    c1AcAdjustment -= 2;
+  }
+
+  if (c1AcAdjustment !== 0) {
+    target = {
+      ...target,
+      ac: Math.max(0, target.ac + c1AcAdjustment)
+    };
+  }
+
   const isRanged = isRangedOverride !== undefined ? isRangedOverride : getWeaponMaxRange(attacker.weapon).isRanged;
   const finalMode = determineAttackMode(attacker.conditions, target.conditions, mode as any, isRanged);
   const r = d20(finalMode);
@@ -1017,16 +1538,113 @@ export function resolveAttack(
     blessBonus = die(4);
   }
 
-  const totalAttack = r.raw + attacker.attack + blessBonus;
-  const hit = isCrit || (!isFumble && totalAttack >= target.ac);
-  const damage = hit ? Math.max(0, roll(attacker.damage, isCrit).total) : 0;
-  const hpBefore = target.hp;
-  const hpAfter = Math.max(0, target.hp - damage);
-  target.hp = hpAfter;
+  /* SRD_3B_B3_BANE_ATTACK */
+  let banePenalty = 0;
+
+  if (
+    (attacker.conditions || [])
+      .some(
+        (condition) => {
+          const normalized =
+            condition
+              .normalize('NFD')
+              .replace(
+                /[\u0300-\u036f]/g,
+                ''
+              )
+              .toLowerCase();
+
+          return (
+            normalized.includes(
+              'bane'
+            ) ||
+            normalized.includes(
+              'amaldicoado'
+            )
+          );
+        }
+      )
+  ) {
+    banePenalty =
+      die(4);
+  }
+
+  const totalAttack =
+    r.raw +
+    attacker.attack +
+    blessBonus -
+    banePenalty;
+
+  const shieldBonus =
+    (target.conditions || []).some(
+      (condition) =>
+        condition
+          .toLowerCase()
+          .includes('escudo arcano')
+    )
+      ? 5
+      : 0;
+
+  const effectiveTargetAc =
+    target.ac +
+    shieldBonus;
+
+  const hit =
+    isCrit ||
+    (
+      !isFumble &&
+      totalAttack >=
+        effectiveTargetAc
+    );
+
+  let damage =
+    hit
+      ? Math.max(
+          0,
+          roll(
+            attacker.damage,
+            isCrit
+          ).total
+        )
+      : 0;
+
+  const ragingResistance =
+    hit &&
+    (target.conditions || []).some(
+      (condition) =>
+        condition
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .toLowerCase()
+          .includes('em furia')
+    ) &&
+    !isClearlyNonPhysicalDamageSource(
+      attacker.weapon
+    );
+
+  if (ragingResistance) {
+    damage =
+      Math.floor(
+        damage / 2
+      );
+  }
+
+  const hpBefore =
+    target.hp;
+
+  const hpAfter =
+    Math.max(
+      0,
+      target.hp -
+        damage
+    );
+
+  target.hp =
+    hpAfter;
 
   const modeTag = finalMode === 'advantage' ? ' (Vantagem)' : finalMode === 'disadvantage' ? ' (Desvantagem)' : '';
   const blessTag = blessBonus > 0 ? ` +1d4(${blessBonus})[Bênção]` : '';
-  const text = `${attacker.name} → ${target.name}: d20 [${r.dice.join(', ')}]${modeTag}${blessTag} ${signed(attacker.attack)} = ${totalAttack} vs CA ${target.ac}. ${
+  const text = `${attacker.name} → ${target.name}: d20 [${r.dice.join(', ')}]${modeTag}${blessTag} ${signed(attacker.attack)} = ${totalAttack} vs CA ${effectiveTargetAc}. ${
     hit ? (isCrit ? 'CRÍTICO! ' : '') + damage + ' de dano.' : 'Errou.'
   }`;
 
@@ -1037,7 +1655,7 @@ export function resolveAttack(
     isFumble,
     d20Roll: r.raw,
     totalAttack,
-    targetAc: target.ac,
+    targetAc: effectiveTargetAc,
     damage,
     attackerName: attacker.name,
     targetName: target.name,
@@ -1073,21 +1691,42 @@ export function spendSpellSlot(c: Character, level: number): boolean {
  * Executa cura de descanso curto gastando Dado de Vida da classe
  */
 export function shortRestHeal(c: Character): { healed: number; rollText: string } {
+  const spent = c.hitDiceSpent || 0;
+  const available = Math.max(0, (c.level || 1) - spent);
+
+  if (available <= 0) {
+    return {
+      healed: 0,
+      rollText: 'não possui mais Dados de Vida disponíveis até concluir um Descanso Longo'
+    };
+  }
+
   const classTuple = classes.find((cl) => cl[0] === c.className);
   const hitDieSides = classTuple ? classTuple[1] : 8;
   const conBonus = mod(c.stats[2]);
   const dieRoll = die(hitDieSides);
   const totalHealed = Math.max(1, dieRoll + conBonus);
   const oldHp = c.hp;
+
+  c.hitDiceSpent = spent + 1;
   c.hp = Math.min(c.maxHp, c.hp + totalHealed);
+
   const actualHealed = c.hp - oldHp;
-  const rollText = `1d${hitDieSides} [${dieRoll}] ${signed(conBonus)} = recuperou ${actualHealed} PV (${c.hp}/${c.maxHp})`;
-  return { healed: actualHealed, rollText };
+  const remaining = Math.max(
+    0,
+    (c.level || 1) - (c.hitDiceSpent || 0)
+  );
+
+  return {
+    healed: actualHealed,
+    rollText:
+      `gastou 1d${hitDieSides} [${dieRoll}] ${signed(conBonus)} = recuperou ${actualHealed} PV (${c.hp}/${c.maxHp}). Dados de Vida restantes: ${remaining}`
+  };
 }
 
-// ════════════════════════════════════════════════════════════════════════════════
+// ================================================================================
 // TACTICAL COMBAT POSITIONING & SERVER-SIDE SPATIAL VALIDATION ENGINE
-// ════════════════════════════════════════════════════════════════════════════════
+// ================================================================================
 
 /**
  * Tactical grid distance (D&D 5e Chebyshev metric where diagonals cost 1 square)
@@ -1211,14 +1850,52 @@ export function validateMovement(
     return { valid: false, reason: 'Personagem incapacitado ou atordoado não pode se mover.', distance };
   }
 
-  // Combat Turn & Movement Budget validation
-  if (state.combat) {
+  // Combat Turn & Movement Budget validation (only applies to combatants in the initiative order)
+  if (state.combat && state.order && state.order.includes(character.id)) {
     const activeTurnId = state.order[state.turn];
     if (activeTurnId !== character.id) {
       return { valid: false, reason: 'Aguarde o seu turno para se mover no combate.', distance };
     }
 
-    const maxBudgetSquares = Math.floor(character.speed / 1.5);
+    /* SRD_3B_C1_EFFECTIVE_MOVEMENT */
+    const c1Conditions =
+      (character.conditions || [])
+        .map((condition) =>
+          condition
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase()
+        )
+        .join(' | ');
+
+    let c1EffectiveSpeed =
+      Math.max(0, character.speed || 0);
+
+    if (
+      c1Conditions.includes('fly') ||
+      c1Conditions.includes('voando')
+    ) {
+      c1EffectiveSpeed =
+        Math.max(c1EffectiveSpeed, 18);
+    }
+
+    if (
+      c1Conditions.includes('haste') ||
+      c1Conditions.includes('acelerado')
+    ) {
+      c1EffectiveSpeed *= 2;
+    }
+
+    if (
+      c1Conditions.includes('slow') ||
+      c1Conditions.includes('lentidao')
+    ) {
+      c1EffectiveSpeed /= 2;
+    }
+
+    const maxBudgetSquares =
+      Math.floor(c1EffectiveSpeed / 1.5) +
+      Math.max(0, state.movementBonusSquares || 0);
     const movementUsed = state.movementUsed || 0;
     if (movementUsed + distance > maxBudgetSquares) {
       const remaining = Math.max(0, maxBudgetSquares - movementUsed);
@@ -1329,7 +2006,7 @@ export function validateWaypointPath(
     };
   }
 
-  const biome = (state.biome || 'village') as 'village' | 'forest' | 'dungeon';
+  const biome = (state.biome || 'village') as BiomeType;
   const effectiveGridSize = gridSize || (maxBound + 1);
 
   // Normalize path: ignore initial point if it's the current position
@@ -1372,6 +2049,35 @@ export function validateWaypointPath(
 
     // Step must be contiguous (Chebyshev distance <= 1)
     if (dx > 1 || dy > 1) {
+      if (!state.combat || waypoints.length === 1) {
+        // Expand/interpolate intermediate steps to reach destination
+        let cx = currentPos.x;
+        let cy = currentPos.y;
+        let blocked = false;
+        while (cx !== wp.x || cy !== wp.y) {
+          const stepX = Math.sign(wp.x - cx);
+          const stepY = Math.sign(wp.y - cy);
+          cx += stepX;
+          cy += stepY;
+          if (isGridTileWalkable(biome, cx, cy, effectiveGridSize, customPolygons)) {
+            steps.push({ x: cx, y: cy });
+          } else {
+            blocked = true;
+            break;
+          }
+        }
+        if (blocked && steps.length === 0) {
+          return {
+            valid: false,
+            reason: `Caminho bloqueado por obstáculo ou terreno intransponível em (${cx}, ${cy}).`,
+            finalPos: currentPos,
+            distance: steps.length,
+            validatedWaypoints: steps
+          };
+        }
+        currentPos = steps.length > 0 ? steps[steps.length - 1] : currentPos;
+        continue;
+      }
       return {
         valid: false,
         reason: `Passo não contíguo detectado de (${currentPos.x}, ${currentPos.y}) para (${wp.x}, ${wp.y}). Saltos de mais de 1 quadrado não são permitidos.`,
@@ -1408,7 +2114,7 @@ export function validateWaypointPath(
   const totalDistance = steps.length;
 
   // Combat Turn & Movement Budget validation
-  if (state.combat) {
+  if (state.combat && state.order?.includes(character.id)) {
     const activeTurnId = state.order[state.turn];
     if (activeTurnId !== character.id) {
       return {
@@ -1420,7 +2126,9 @@ export function validateWaypointPath(
       };
     }
 
-    const maxBudgetSquares = Math.floor(character.speed / 1.5);
+    const maxBudgetSquares =
+      Math.floor(character.speed / 1.5) +
+      Math.max(0, state.movementBonusSquares || 0);
     const movementUsed = state.movementUsed || 0;
     if (movementUsed + totalDistance > maxBudgetSquares) {
       const remaining = Math.max(0, maxBudgetSquares - movementUsed);
@@ -1468,16 +2176,21 @@ export interface ProjectileVFX {
 
 export type WsClientMessage =
   | { type: 'JOIN_ROOM'; roomId: string; userId: string; characterId?: string }
+  | { type: 'PLAYER_JOIN'; roomId: string; userId: string; character: Character }
+  | { type: 'PLAYER_LEAVE'; roomId: string; userId?: string; characterId?: string }
   | { type: 'MOVE_PATH'; roomId: string; characterId: string; waypoints: { x: number; y: number }[]; seq: number; gridSize?: number; maxBound?: number }
   | { type: 'ATTACK'; roomId: string; actorId: string; targetId: string; weaponIndex?: number; seq: number }
   | { type: 'CAST_SPELL'; roomId: string; actorId: string; targetId?: string; spellName: string; level?: number; seq: number }
   | { type: 'ACTION'; roomId: string; action: string; payload?: Record<string, unknown>; seq: number }
   | { type: 'CHAT'; roomId: string; sender: string; text: string }
+  | { type: 'FORCE_SYNC' }
   | { type: 'PING'; timestamp: number };
 
 export type WsServerMessage =
   | { type: 'INIT_SNAPSHOT'; roomId: string; state: State; version: number; seq: number; serverTime: number }
   | { type: 'SYNC_SNAPSHOT'; roomId: string; state: State; version: number; seq: number }
+  | { type: 'PLAYER_JOINED'; roomId: string; character: Character; state: State; version: number; seq: number }
+  | { type: 'PLAYER_LEFT'; roomId: string; characterId: string; userId?: string; reason?: string; state: State; version: number; seq: number }
   | { type: 'HERO_MOVED'; roomId: string; characterId: string; waypoints: { x: number; y: number }[]; finalPos: { x: number; y: number }; seq: number }
   | { type: 'MOVE_REJECTED'; roomId: string; characterId: string; originalPos: { x: number; y: number }; reason: string; seq: number }
   | { type: 'ATTACK_RESULT'; roomId: string; actorId: string; targetId: string; projectile?: ProjectileVFX; attackResult: AttackResult; state: State; version: number; seq: number }
@@ -1485,6 +2198,3 @@ export type WsServerMessage =
   | { type: 'CHAT_MESSAGE'; roomId: string; sender: string; text: string; timestamp: number }
   | { type: 'PONG'; timestamp: number }
   | { type: 'ERROR'; message: string; code?: string; seq?: number };
-
-
-

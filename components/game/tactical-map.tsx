@@ -1,6 +1,539 @@
 // components/game/tactical-map.tsx
 'use client';
 
+import {
+  getCreatureProfile
+} from '@/lib/creature-profiles';
+
+
+function getEnemyTokenVisual(
+  name: string
+) {
+  const profile =
+    getCreatureProfile(
+      name
+    );
+
+  if (
+    profile.aiStyle ===
+    'dragon'
+  ) {
+    return {
+      glyph:
+        profile.tokenGlyph ||
+        '??',
+      bg:
+        'bg-gradient-to-br from-orange-500 via-red-800 to-black',
+      ring:
+        'ring-orange-400/90'
+    };
+  }
+
+  if (
+    profile.aiStyle ===
+    'boss'
+  ) {
+    return {
+      glyph:
+        profile.tokenGlyph ||
+        '??',
+      bg:
+        'bg-gradient-to-br from-purple-500 via-violet-950 to-black',
+      ring:
+        'ring-purple-400/90'
+    };
+  }
+
+  if (
+    profile.aiStyle ===
+    'caster'
+  ) {
+    return {
+      glyph:
+        profile.tokenGlyph ||
+        '??',
+      bg:
+        'bg-gradient-to-br from-violet-600 via-indigo-950 to-black',
+      ring:
+        'ring-violet-400/80'
+    };
+  }
+
+  if (
+    profile.aiStyle ===
+    'skirmisher'
+  ) {
+    return {
+      glyph:
+        profile.tokenGlyph ||
+        '??',
+      bg:
+        'bg-gradient-to-br from-zinc-500 via-slate-800 to-black',
+      ring:
+        'ring-slate-300/80'
+    };
+  }
+
+  if (
+    profile.aiStyle ===
+    'guardian'
+  ) {
+    return {
+      glyph:
+        profile.tokenGlyph ||
+        '???',
+      bg:
+        'bg-gradient-to-br from-stone-500 via-zinc-900 to-black',
+      ring:
+        'ring-stone-300/80'
+    };
+  }
+
+  return {
+    glyph:
+      profile.tokenGlyph ||
+      '??',
+    bg:
+      'bg-gradient-to-br from-red-700 via-red-950 to-black',
+    ring:
+      'ring-red-500/80'
+  };
+}
+
+function DndTokens({
+  displayHeroes,
+  enemies,
+  npcs,
+  corpses,
+  onLootCorpse,
+  currentBiome,
+  gridSize,
+  selectedHeroId,
+  selectedEnemyId,
+  activeTurnId,
+  targetingAction,
+  isCombat,
+  activeVfx,
+  tokenRecoils,
+  slashVfx,
+  healVfx,
+  lootSparkles,
+  contextEnemy,
+  setContextEnemy,
+  onSelectToken,
+  onTargetEnemy,
+  onTargetHero,
+  onTargetSquare,
+  onTalkNpc,
+  onInteractPlayer,
+  currentHeroX,
+  currentHeroY
+}: any) {
+  const getStatusClass = (condition: string) => {
+    const c = condition.toLowerCase();
+    if (c.includes('envenenad') || c.includes('poison')) return 'status-poisoned';
+    if (c.includes('queimand') || c.includes('burn') || c.includes('fogo')) return 'status-burning';
+    if (c.includes('congelad') || c.includes('frozen') || c.includes('gelo')) return 'status-frozen';
+    if (c.includes('atordoad') || c.includes('stun')) return 'status-stunned';
+    if (c.includes('abençoad') || c.includes('bless')) return 'status-blessed';
+    if (c.includes('invisível') || c.includes('invisible')) return 'status-invisible';
+    return '';
+  };
+  const getStatusDotColor = (condition: string) => {
+    const c = condition.toLowerCase();
+    if (c.includes('envenenad') || c.includes('poison')) return 'bg-green-400';
+    if (c.includes('queimand') || c.includes('burn')) return 'bg-orange-400';
+    if (c.includes('congelad') || c.includes('frozen')) return 'bg-sky-300';
+    if (c.includes('atordoad') || c.includes('stun')) return 'bg-yellow-400';
+    if (c.includes('abençoad') || c.includes('bless')) return 'bg-amber-300';
+    if (c.includes('invisível') || c.includes('invisible')) return 'bg-zinc-400';
+    return 'bg-zinc-500';
+  };
+
+  const isInRange = (x: number, y: number) => {
+    const dist = Math.max(Math.abs(currentHeroX - x), Math.abs(currentHeroY - y));
+    if (targetingAction) return dist <= targetingAction.rangeSquares;
+    return dist <= 1;
+  };
+
+  const getRecoilStyle = (id: string) => {
+    const recoil = tokenRecoils?.[id];
+    if (!recoil) return undefined;
+    const isCrit = recoil.type === 'crit';
+    const isMiss = recoil.type === 'miss';
+    const isHeal = recoil.type === 'heal';
+    return {
+      transform: `translate(${recoil.dx}px, ${recoil.dy}px) ${isCrit ? 'scale(1.25)' : isMiss ? 'scale(0.92)' : isHeal ? 'scale(1.12)' : 'scale(1.08)'}`,
+      filter: isCrit
+        ? 'brightness(2.2) drop-shadow(0 0 16px rgba(239,68,68,1)) drop-shadow(0 0 25px rgba(245,158,11,0.9))'
+        : isHeal
+        ? 'brightness(1.6) drop-shadow(0 0 16px rgba(52,211,153,0.95))'
+        : isMiss
+        ? 'brightness(1.2) drop-shadow(0 0 8px rgba(147,197,253,0.8))'
+        : 'brightness(1.8) drop-shadow(0 0 12px rgba(239,68,68,0.9))',
+      transition: 'transform 70ms cubic-bezier(0.1, 0.9, 0.2, 1), filter 70ms ease'
+    };
+  };
+
+  const visibleHeroes = (displayHeroes || []).filter((hero: any) => {
+    if (!hero) return false;
+    if (currentBiome === 'village') return !hero.biome || hero.biome === 'village';
+    return hero.biome === currentBiome;
+  });
+
+  const selectedHero = (displayHeroes || []).find((h: any) => h.id === selectedHeroId);
+  const visibleEnemies = (enemies || []).filter((enemy: any) => {
+    if (!enemy || enemy.hp <= 0) return false;
+    if (currentBiome === 'village') return false;
+    const enemyBiome = enemy.biome || 'forest';
+    if (enemyBiome !== currentBiome) return false;
+    if (selectedHero?.partyId && enemy.partyId && enemy.partyId !== selectedHero.partyId) return false;
+    if (!selectedHero?.partyId && enemy.ownerCharId && enemy.ownerCharId !== selectedHero?.id) return false;
+    return true;
+  });
+
+  return (
+    <>
+      {visibleHeroes.map((hero: any) => {
+        const isSelected = hero.id === selectedHeroId;
+        const isActiveTurn = isCombat && (hero.id === activeTurnId);
+        const hpRatio = hero.hp / hero.maxHp;
+        const conditions = hero.conditions || [];
+        const statusClasses = conditions.map((c: string) => getStatusClass(c)).filter(Boolean).join(' ');
+        
+        const leftPerc = (hero.x / gridSize) * 100;
+        const topPerc = (hero.y / gridSize) * 100;
+        const sizePerc = 100 / gridSize;
+        const recoilStyle = getRecoilStyle(hero.id);
+
+        if (hero.hp <= 0) {
+          return (
+            <div key={hero.id}
+                 style={{ left: leftPerc + '%', top: topPerc + '%', width: sizePerc + '%', height: sizePerc + '%', transition: 'left 455ms linear, top 455ms linear' }}
+                 className="absolute flex items-center justify-center pointer-events-auto"
+                 onClick={(e) => {
+                   e.stopPropagation();
+                   if (targetingAction) {
+                     if (
+                       (
+                         targetingAction.targetMode === 'area' ||
+                         targetingAction.targetMode === 'point'
+                       ) &&
+                       onTargetSquare &&
+                       isInRange(hero.x, hero.y)
+                     ) {
+                       onTargetSquare(hero.x, hero.y);
+                     } else if (
+                       (
+                         targetingAction.targetMode === 'ally' ||
+                         targetingAction.targetMode === 'self'
+                       ) &&
+                       onTargetHero
+                     ) {
+                       onTargetHero(hero.id);
+                     } else {
+                       onSelectToken('hero', hero.id);
+                     }
+                   } else if (onInteractPlayer && hero.id !== selectedHeroId) {
+                     onInteractPlayer(hero);
+                   } else {
+                     onSelectToken('hero', hero.id);
+                   }
+                 }}>
+              <div className="relative w-[85%] h-[85%] max-w-[36px] max-h-[36px] rounded-full flex flex-col items-center justify-center ring-2 ring-red-700 bg-gradient-to-br from-zinc-950 via-red-950 to-black grayscale opacity-80 shadow-lg cursor-pointer">
+                <span className="text-sm select-none drop-shadow">💀</span>
+                <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-red-950 border border-red-700 text-red-300 font-mono text-[7px] px-1 rounded-full uppercase tracking-tight whitespace-nowrap z-20">0 PV</div>
+              </div>
+            </div>
+          );
+        }
+
+        let ringColor = 'ring-amber-600/70';
+        let bgGradient = 'from-[#2d2417] via-[#1a1711] to-black';
+        if (hero.className === 'Mago' || hero.className === 'Feiticeiro') { ringColor = 'ring-purple-600/70'; bgGradient = 'from-[#2d172d] via-[#1a111a] to-black'; }
+        if (hero.className === 'Ladino') { ringColor = 'ring-zinc-600/70'; bgGradient = 'from-[#1a1a1a] via-[#111] to-black'; }
+        if (hero.className === 'Clérigo' || hero.className === 'Paladino') { ringColor = 'ring-yellow-500/70'; bgGradient = 'from-[#3a3015] via-[#221c0b] to-black'; }
+        if (hero.className === 'Druida' || hero.className === 'Patrulheiro') { ringColor = 'ring-emerald-600/70'; bgGradient = 'from-[#172d1a] via-[#0f1d11] to-black'; }
+
+        return (
+          <div key={hero.id}
+               style={{ left: leftPerc + '%', top: topPerc + '%', width: sizePerc + '%', height: sizePerc + '%', transition: 'left 455ms linear, top 455ms linear', zIndex: isActiveTurn ? 40 : 30 }}
+               className="absolute flex items-center justify-center pointer-events-auto group"
+               onClick={(e) => {
+                 e.stopPropagation();
+                 if (targetingAction) {
+                     if (
+                       (
+                         targetingAction.targetMode === 'area' ||
+                         targetingAction.targetMode === 'point'
+                       ) &&
+                       onTargetSquare &&
+                       isInRange(hero.x, hero.y)
+                     ) {
+                       onTargetSquare(hero.x, hero.y);
+                     } else if (
+                       (
+                         targetingAction.targetMode === 'ally' ||
+                         targetingAction.targetMode === 'self'
+                       ) &&
+                       onTargetHero
+                     ) {
+                       onTargetHero(hero.id);
+                     } else {
+                       onSelectToken('hero', hero.id);
+                     }
+                   } else if (onInteractPlayer && hero.id !== selectedHeroId) {
+                     onInteractPlayer(hero);
+                   } else {
+                     onSelectToken('hero', hero.id);
+                   }
+               }}>
+            <div style={recoilStyle} className={`relative w-[85%] h-[85%] max-w-[42px] max-h-[42px] rounded-full flex flex-col items-center justify-center cursor-pointer shadow-[0_4px_10px_rgba(0,0,0,0.6)] transition-transform ${hero.isWalking ? 'token-walking-active scale-110' : 'token-human-sway hover:scale-105'} ${isActiveTurn ? 'ring-4 ring-amber-400 ring-offset-2 ring-offset-black scale-115 shadow-[0_0_25px_rgba(251,191,36,0.9)] token-selected-pulse' : isSelected ? 'ring-2 ring-amber-400 ring-offset-1 ring-offset-black scale-110 token-selected-pulse' : `ring-2 ${ringColor}`} bg-gradient-to-br ${bgGradient} ${statusClasses}`}>
+              <div className="absolute inset-[2px] rounded-full border border-white/10 pointer-events-none" />
+              {isActiveTurn && <div className="absolute -inset-2 rounded-full border-2 border-amber-400 animate-ping opacity-60 pointer-events-none" />}
+              {isActiveTurn && <div className="absolute -bottom-3.5 left-1/2 -translate-x-1/2 bg-amber-400 text-black font-black text-[8px] px-1.5 rounded-full uppercase tracking-wider shadow-lg z-30 animate-pulse pointer-events-none whitespace-nowrap">VEZ</div>}
+              {activeVfx?.[hero.id] && <div className={activeVfx[hero.id]} />}
+              {slashVfx?.[hero.id] && (
+                <div className="absolute -inset-4 pointer-events-none z-45 flex items-center justify-center animate-slash-sweep">
+                  <div className="w-16 h-1.5 bg-gradient-to-r from-transparent via-amber-200 to-transparent shadow-[0_0_20px_rgba(251,191,36,1)] rounded-full rotate-[-45deg] scale-125" />
+                </div>
+              )}
+              {healVfx?.[hero.id] && (
+                <div className="absolute -inset-3 pointer-events-none z-45 flex items-center justify-center heal-rise-anim">
+                  <div className="w-full h-full rounded-full border-2 border-emerald-400 shadow-[0_0_20px_rgba(52,211,153,0.95)] animate-ping" />
+                  <span className="absolute -top-4 font-black text-xs text-emerald-300 drop-shadow">+PV</span>
+                </div>
+              )}
+              <div className="absolute -top-3 left-1/2 -translate-x-1/2 w-[130%] max-w-[42px] h-[5px] bg-black/95 rounded-full border border-zinc-500/80 overflow-hidden shadow-lg z-20">
+                <div style={{ width: `${Math.min(100, hpRatio * 100)}%` }} className={`h-full transition-all duration-500 ease-out ${hpRatio > 0.5 ? 'bg-gradient-to-r from-emerald-500 to-green-400' : hpRatio > 0.2 ? 'bg-gradient-to-r from-amber-500 to-yellow-400' : 'bg-gradient-to-r from-red-600 to-red-400'}`} />
+              </div>
+              {(isSelected || isActiveTurn) && (
+                <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-zinc-950/95 border border-amber-500/60 px-1.5 rounded text-[9px] font-mono font-bold text-amber-200 whitespace-nowrap z-30 shadow-md pointer-events-none">{hero.hp}/{hero.maxHp}</div>
+              )}
+              {conditions.length > 0 && (
+                <div className="absolute -top-1 -right-1 flex gap-0.5 z-20">
+                  {conditions.slice(0, 3).map((c: string, i: number) => <div key={i} className={`w-[6px] h-[6px] rounded-full ${getStatusDotColor(c)} shadow-sm border border-black`} title={c} />)}
+                </div>
+              )}
+              <img src={tokenArt(heroTokenIndex(hero))} alt={hero.name} className="dd-token-art" />
+            </div>
+          </div>
+        );
+      })}
+
+      {visibleEnemies.map((enemy: any) => {
+        const isSelected = enemy.id === selectedEnemyId;
+        const isActiveTurn = isCombat && (enemy.id === activeTurnId);
+        const hpRatio = enemy.hp / enemy.maxHp;
+        const conditions = enemy.conditions || [];
+        const statusClasses = conditions.map((c: string) => getStatusClass(c)).filter(Boolean).join(' ');
+        const isTargeted = targetingAction && isInRange(enemy.x, enemy.y);
+
+        /*
+         * Ultima barreira visual:
+         * mesmo um save legado nunca desenha inimigo fora do canvas.
+         */
+        const safeEnemyX =
+          Math.max(
+            0,
+            Math.min(
+              gridSize - 1,
+              Number(enemy.x) || 0
+            )
+          );
+
+        const safeEnemyY =
+          Math.max(
+            0,
+            Math.min(
+              gridSize - 1,
+              Number(enemy.y) || 0
+            )
+          );
+
+        const leftPerc =
+          (safeEnemyX / gridSize) * 100;
+
+        const topPerc =
+          (safeEnemyY / gridSize) * 100;
+        const sizePerc = 100 / gridSize;
+        const recoilStyle = getRecoilStyle(enemy.id);
+        const visual = getEnemyTokenVisual(enemy.name);
+
+        return (
+          <div key={enemy.id}
+               style={{ left: leftPerc + '%', top: topPerc + '%', width: sizePerc + '%', height: sizePerc + '%', transition: 'left 455ms linear, top 455ms linear', zIndex: isActiveTurn ? 35 : 25 }}
+               className="absolute flex items-center justify-center pointer-events-auto"
+               onClick={(e) => {
+                 e.stopPropagation();
+                 onSelectToken('enemy', enemy.id);
+                 setContextEnemy(enemy);
+
+                 if (
+                   targetingAction &&
+                   (
+                     targetingAction.targetMode === 'area' ||
+                     targetingAction.targetMode === 'point'
+                   ) &&
+                   onTargetSquare &&
+                   isInRange(enemy.x, enemy.y)
+                 ) {
+                   onTargetSquare(
+                     enemy.x,
+                     enemy.y
+                   );
+                 } else if (isTargeted) {
+                   onTargetEnemy(enemy.id);
+                 } else if (isInRange(enemy.x, enemy.y)) {
+                   onTargetEnemy(enemy.id);
+                 }
+               }}>
+            <div style={recoilStyle} className={`relative w-[85%] h-[85%] max-w-[42px] max-h-[42px] rounded-full flex flex-col items-center justify-center cursor-pointer shadow-[0_4px_10px_rgba(0,0,0,0.6)] token-human-sway ${isActiveTurn ? 'ring-4 ring-red-500 ring-offset-2 ring-offset-black scale-115 shadow-[0_0_25px_rgba(239,68,68,0.9)] token-target-pulse' : isSelected ? 'ring-2 ring-red-500 ring-offset-1 ring-offset-black scale-110 token-target-pulse' : isTargeted ? 'ring-2 ring-amber-400/80 ring-offset-1 ring-offset-black scale-105 animate-pulse' : 'ring-[1.5px] ring-red-700/80 hover:scale-105'} ${visual.bg} ${visual.ring} transition-transform ${statusClasses}`}>
+              <div className="absolute inset-[1px] rounded-full border border-red-500/30 pointer-events-none" />
+              {isActiveTurn && <div className="absolute -inset-2 rounded-full border-2 border-red-500 animate-ping opacity-60 pointer-events-none" />}
+              {isActiveTurn && <div className="absolute -bottom-3.5 left-1/2 -translate-x-1/2 bg-red-600 text-white font-black text-[8px] px-1.5 rounded-full uppercase tracking-wider shadow-lg z-30 animate-pulse pointer-events-none whitespace-nowrap">VEZ</div>}
+              {activeVfx?.[enemy.id] && <div className={activeVfx[enemy.id]} />}
+              {slashVfx?.[enemy.id] && (
+                <div className="absolute -inset-4 pointer-events-none z-45 flex items-center justify-center animate-slash-sweep">
+                  <div className="w-16 h-1.5 bg-gradient-to-r from-transparent via-amber-200 to-transparent shadow-[0_0_20px_rgba(251,191,36,1)] rounded-full rotate-[-45deg] scale-125" />
+                </div>
+              )}
+              {healVfx?.[enemy.id] && (
+                <div className="absolute -inset-3 pointer-events-none z-45 flex items-center justify-center heal-rise-anim">
+                  <div className="w-full h-full rounded-full border-2 border-emerald-400 shadow-[0_0_20px_rgba(52,211,153,0.95)] animate-ping" />
+                  <span className="absolute -top-4 font-black text-xs text-emerald-300 drop-shadow">+PV</span>
+                </div>
+              )}
+              <div className="absolute -top-3 left-1/2 -translate-x-1/2 w-[130%] max-w-[42px] h-[5px] bg-black/95 rounded-full border border-zinc-500/80 overflow-hidden shadow-lg z-20">
+                <div style={{ width: `${Math.min(100, hpRatio * 100)}%` }} className={`h-full transition-all duration-500 ease-out ${hpRatio > 0.5 ? 'bg-gradient-to-r from-red-500 to-rose-400' : hpRatio > 0.2 ? 'bg-gradient-to-r from-amber-500 to-orange-400' : 'bg-gradient-to-r from-red-700 to-red-500'}`} />
+              </div>
+              {isSelected && (
+                <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-zinc-950/95 border border-red-600/60 px-1.5 rounded text-[9px] font-mono font-bold text-red-200 whitespace-nowrap z-30 shadow-md pointer-events-none">{enemy.hp}/{enemy.maxHp}</div>
+              )}
+              {conditions.length > 0 && (
+                <div className="absolute -top-1 -right-1 flex gap-0.5 z-20">
+                  {conditions.slice(0, 3).map((c: string, i: number) => <div key={i} className={`w-[6px] h-[6px] rounded-full ${getStatusDotColor(c)} shadow-sm border border-black`} title={c} />)}
+                </div>
+              )}
+              {isTargeted && <div className="absolute inset-0 rounded-full border-2 border-dashed border-amber-400/70 animate-spin-slow pointer-events-none z-15" />}
+              <img src={tokenArt(enemyTokenIndex(enemy.name))} alt={enemy.name} className="dd-token-art" />
+            </div>
+          </div>
+        );
+      })}
+
+      {/* LOOT SPARKLES POPPING ANIMATION OVER RECENTLY LOOTED TILES */}
+      {(lootSparkles || []).map((sp: any) => {
+        const leftP = (sp.x / gridSize) * 100;
+        const topP = (sp.y / gridSize) * 100;
+        return (
+          <div
+            key={sp.id}
+            style={{ left: `${leftP}%`, top: `${topP}%` }}
+            className="absolute z-50 pointer-events-none loot-sparkle-anim flex flex-col items-center"
+          >
+            <span className="text-xl filter drop-shadow-[0_0_12px_rgba(245,158,11,1)]">✨🪙✨</span>
+          </div>
+        );
+      })}
+
+      {(npcs || [])
+        .filter((npc: any) => {
+          if (npc.biome) return npc.biome === currentBiome;
+          return currentBiome === 'village';
+        })
+        .map((npc: any) => {
+          const dist = Math.max(Math.abs(currentHeroX - (npc.x || 0)), Math.abs(currentHeroY - (npc.y || 0)));
+          const isNear = dist <= 1;
+          const leftPerc = ((npc.x || 0) / gridSize) * 100;
+          const topPerc = ((npc.y || 0) / gridSize) * 100;
+          const sizePerc = 100 / gridSize;
+
+          return (
+            <div key={npc.id}
+                 style={{ left: leftPerc + '%', top: topPerc + '%', width: sizePerc + '%', height: sizePerc + '%', transition: 'left 455ms linear, top 455ms linear', zIndex: 20 }}
+                 className="absolute flex items-center justify-center pointer-events-auto"
+                 onClick={(e) => {
+                   e.stopPropagation();
+                   if (isNear) onTalkNpc?.(npc.id);
+                 }}>
+              <div className={`relative w-[80%] h-[80%] max-w-[36px] max-h-[36px] rounded-full flex flex-col items-center justify-center cursor-pointer transition-all ${isNear ? 'ring-2 ring-amber-400 ring-offset-1 ring-offset-black npc-talk-glow shadow-[0_0_18px_rgba(245,158,11,0.7)] scale-105' : 'ring-[1.5px] ring-emerald-500/70 opacity-90 shadow-md hover:scale-105'} bg-gradient-to-br from-[#1b3320] via-[#102415] to-[#0a140c]`}>
+                <div className="absolute inset-[1px] rounded-full border border-emerald-500/20 pointer-events-none" />
+                {isNear && (
+                  <button type="button" onClick={(e) => { e.stopPropagation(); onTalkNpc?.(npc.id); }} className="absolute -top-7 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1 px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-400 to-yellow-300 hover:from-amber-300 hover:to-yellow-200 text-black font-black text-[9px] shadow-[0_0_12px_rgba(245,158,11,0.9)] cursor-pointer active:scale-95 transition-all whitespace-nowrap">💬 Falar</button>
+                )}
+                <span className="text-sm drop-shadow-md select-none">{npc.id === 'doran' ? '🧙' : npc.id === 'elenor' ? '🧪' : npc.id === 'kaelen' ? '🛡️' : '👤'}</span>
+                <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-zinc-950/95 border border-emerald-500/60 text-emerald-300 font-serif font-bold text-[8px] px-1.5 py-0 rounded-full tracking-tight whitespace-nowrap z-20 shadow pointer-events-none">{npc.name.split(' ')[0]}</div>
+              </div>
+            </div>
+          );
+        })}
+
+      {/* RENDER GROUND CORPSES WITH PROCEDURAL LOOT */}
+      {(corpses || [])
+        .filter((c: any) => {
+          if (!c) return false;
+          const corpseBiome = c.biome || 'forest';
+          return corpseBiome === currentBiome;
+        })
+        .map((corpse: any) => {
+          const dist = Math.max(Math.abs(currentHeroX - corpse.x), Math.abs(currentHeroY - corpse.y));
+          const isNear = dist <= 1;
+          const leftPerc = (corpse.x / gridSize) * 100;
+          const topPerc = (corpse.y / gridSize) * 100;
+          const sizePerc = 100 / gridSize;
+
+          return (
+            <div
+              key={corpse.id}
+              style={{
+                left: leftPerc + '%',
+                top: topPerc + '%',
+                width: sizePerc + '%',
+                height: sizePerc + '%',
+                transition: 'left 455ms linear, top 455ms linear',
+                zIndex: 22
+              }}
+              className="absolute flex items-center justify-center pointer-events-auto"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (isNear && onLootCorpse) {
+                  onLootCorpse(corpse.id);
+                }
+              }}
+            >
+              <div
+                className={`relative w-[85%] h-[85%] max-w-[38px] max-h-[38px] rounded-full flex flex-col items-center justify-center cursor-pointer transition-all ${
+                  isNear
+                    ? 'ring-2 ring-yellow-400 ring-offset-1 ring-offset-black shadow-[0_0_15px_rgba(234,179,8,0.8)] scale-110 animate-bounce'
+                    : 'ring-1 ring-amber-600/70 opacity-90 shadow-md hover:scale-105'
+                } bg-gradient-to-br from-amber-950 via-zinc-950 to-black`}
+                title={`${corpse.name} • ${corpse.gold} PO • Clique para saquear`}
+              >
+                <span className="text-xs select-none">💀</span>
+                <div className="absolute -bottom-3.5 left-1/2 -translate-x-1/2 bg-yellow-950 border border-yellow-500/80 text-yellow-300 font-mono text-[7px] px-1 rounded-full whitespace-nowrap shadow z-20">
+                  {corpse.gold} PO
+                </div>
+                {isNear && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onLootCorpse?.(corpse.id);
+                    }}
+                    className="absolute -top-7 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1 px-2 py-0.5 rounded-full bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-300 hover:to-amber-400 text-black font-black text-[9px] shadow-[0_0_12px_rgba(245,158,11,0.9)] cursor-pointer active:scale-95 transition-all whitespace-nowrap"
+                  >
+                    💰 Saquear
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+    </>
+  );
+}
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Eye,
@@ -26,10 +559,14 @@ import {
   RotateCcw,
   Mic
 } from 'lucide-react';
-import type { Character, Enemy } from '@/lib/game-engine';
+import type { Character, Enemy, GroundCorpse } from '@/lib/game-engine';
+import { playSfx } from '@/lib/sound-effects';
 import type { ActionSelection } from './bottom-player-hud';
 import type { ProceduralDungeon, TileType } from '@/lib/dungeon-generator';
-import type { Battlemap, OrganicTileType } from '@/lib/battlemap-biomes';
+import type { Battlemap, OrganicTileType, BiomeType } from '@/lib/battlemap-biomes';
+import { CORE_START, CORE_SIZE, WORLD_SIZE, legacyWorldPoint, worldProps } from '@/lib/open-world';
+import { heroTokenIndex, enemyTokenIndex, tokenArt } from '@/lib/token-art';
+import { type DungeonFloor, type DungeonCrawlerTile, findDungeonPathAStar } from '@/lib/dungeon-crawler';
 import {
   MAP_COLLISION_PROFILES,
   isGridTileWalkable,
@@ -38,6 +575,32 @@ import {
   type Point,
   type CollisionPolygon
 } from '@/lib/collision-system';
+
+// Physical Adventure Portals connected organically between biomes
+export const BIOME_PORTALS: Record<string, { label: string; x: number; y: number; targetBiome: BiomeType; targetLocationIndex: number; icon: string }[]> = {
+  village: [
+    { label: 'Portão Norte: Floresta dos Sussurros', x: 4, y: 0, targetBiome: 'forest', targetLocationIndex: 1, icon: '🌲' }
+  ],
+  forest: [
+    { label: 'Trilha Sul: Retornar à Vila', x: 2, y: 7, targetBiome: 'village', targetLocationIndex: 0, icon: '🏡' },
+    { label: 'Portal Antigo: Ruínas da Abadia', x: 7, y: 0, targetBiome: 'ruins', targetLocationIndex: 2, icon: '🏛️' }
+  ],
+  ruins: [
+    { label: 'Caminho Sul: Floresta dos Sussurros', x: 4, y: 7, targetBiome: 'forest', targetLocationIndex: 1, icon: '🌲' },
+    { label: 'Descida: Catacumbas dos Três Selos', x: 7, y: 7, targetBiome: 'dungeon', targetLocationIndex: 3, icon: '🗝️' }
+  ],
+  dungeon: [
+    { label: 'Escadas: Pátio das Ruínas', x: 0, y: 4, targetBiome: 'ruins', targetLocationIndex: 2, icon: '🏛️' },
+    { label: 'Fenda Vulcânica: Desfiladeiro Escarpado', x: 7, y: 0, targetBiome: 'canyon', targetLocationIndex: 4, icon: '🌋' }
+  ],
+  canyon: [
+    { label: 'Trilha Baixa: Catacumbas', x: 0, y: 7, targetBiome: 'dungeon', targetLocationIndex: 3, icon: '🗝️' },
+    { label: 'Portal de Obsidiana: Covil de Ignisrax', x: 7, y: 0, targetBiome: 'lair', targetLocationIndex: 5, icon: '🐉' }
+  ],
+  lair: [
+    { label: 'Fenda de Retorno: Desfiladeiro', x: 4, y: 7, targetBiome: 'canyon', targetLocationIndex: 4, icon: '🌋' }
+  ]
+};
 
 // Map action/weapon/spell names to VFX CSS class
 function getVfxClass(actionName: string): string {
@@ -99,9 +662,10 @@ export interface MapNpc {
   x?: number;
   y?: number;
   icon?: string;
+  biome?: BiomeType;
 }
 
-interface TacticalMapProps {
+export interface TacticalMapProps {
   characters: Character[];
   enemies: Enemy[];
   selectedHeroId: string;
@@ -113,21 +677,33 @@ interface TacticalMapProps {
   onMoveHeroPath?: (heroId: string, waypoints: Point[]) => void;
   remoteWalkPath?: { characterId: string; waypoints: Point[]; seq: number } | null;
   onTargetEnemy: (enemyId: string) => void;
+  onTargetHero?: (heroId: string) => void;
+  onTargetSquare?: (x: number, y: number) => void;
   locationName: string;
   locationLabel: string;
   isCombat: boolean;
   canMove: boolean;
   dungeon?: ProceduralDungeon;
   battlemap?: Battlemap;
+  dungeonFloor?: DungeonFloor | null;
   onInteractObject?: (type: string, x: number, y: number) => void;
   busy?: boolean;
   activeTurnId?: string;
   npcs?: MapNpc[];
+  corpses?: GroundCorpse[];
+  onLootCorpse?: (corpseId: string) => void;
+  onNavigatePortal?: (targetBiome: BiomeType, targetLocationIndex: number) => void;
   onTalkNpc?: (npcId: string) => void;
   projectiles?: ProjectileVfx[];
   movementUsed?: number;
-  biome?: 'village' | 'forest' | 'dungeon';
+  movementBonusSquares?: number;
+  biome?: BiomeType;
   onInteractPlayer?: (hero: Character) => void;
+  screenShake?: boolean;
+  tokenRecoils?: Record<string, { dx: number; dy: number; type: 'hit' | 'crit' | 'miss' | 'heal'; timestamp: number }>;
+  slashVfx?: Record<string, { timestamp: number }>;
+  healVfx?: Record<string, { timestamp: number }>;
+  lootSparkles?: { x: number; y: number; id: string }[];
 }
 
 export function TacticalMap({
@@ -142,37 +718,55 @@ export function TacticalMap({
   onMoveHeroPath,
   remoteWalkPath,
   onTargetEnemy,
+  onTargetHero,
+  onTargetSquare,
   locationName,
   locationLabel,
   isCombat,
   canMove,
   dungeon,
   battlemap,
+  dungeonFloor,
   onInteractObject,
   busy,
   activeTurnId,
   npcs,
+  corpses,
+  onLootCorpse,
+  onNavigatePortal,
   onTalkNpc,
   projectiles,
   movementUsed = 0,
+  movementBonusSquares = 0,
   biome = 'village',
-  onInteractPlayer
+  onInteractPlayer,
+  screenShake,
+  tokenRecoils,
+  slashVfx,
+  healVfx,
+  lootSparkles
 }: TacticalMapProps) {
   const [fogOfWar, setFogOfWar] = useState(true);
   const [zoomScale, setZoomScale] = useState(1);
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const touchGesture = useRef<{ x: number; y: number; distance: number; zoom: number; panX: number; panY: number } | null>(null);
+  const gestureConsumed = useRef(false);
   const [hoveredSquare, setHoveredSquare] = useState<{ x: number; y: number } | null>(null);
   const [contextEnemy, setContextEnemy] = useState<Enemy | null>(null);
   // VFX state: maps entityId -> vfx CSS class, auto-clears after animation
   const [activeVfx, setActiveVfx] = useState<Record<string, string>>({});
   // Track previous HP to detect damage/heal and trigger VFX
   const prevHpRef = useRef<Record<string, number>>({});
+  const boardViewportRef = useRef<HTMLDivElement>(null);
+  const boardStageRef = useRef<HTMLDivElement>(null);
 
   // Reset pan and center hero on turn / combat change
   const handleCenterHero = () => {
-    setPanOffset({ x: 0, y: 0 });
+    const viewport = boardViewportRef.current, stage = boardStageRef.current;
+    if (!viewport || !stage) return;
+    setPanOffset({ x: viewport.clientWidth / 2 - stage.offsetWidth * ((activeHero?.x ?? gridSize / 2) + .5) / gridSize, y: viewport.clientHeight * .42 - stage.offsetHeight * ((activeHero?.y ?? gridSize / 2) + .5) / gridSize });
     setZoomScale(1);
   };
 
@@ -195,6 +789,21 @@ export function TacticalMap({
   const handleWheel = (e: React.WheelEvent) => {
     const delta = e.deltaY < 0 ? 0.08 : -0.08;
     setZoomScale((z) => Math.max(1.0, Math.min(2.2, Number((z + delta).toFixed(2)))));
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    gestureConsumed.current = false;
+    if (e.touches.length !== 2) return;
+    const [a, b] = [e.touches[0], e.touches[1]];
+    touchGesture.current = { x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2, distance: Math.max(1, Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY)), zoom: zoomScale, panX: panOffset.x, panY: panOffset.y };
+    gestureConsumed.current = true;
+  };
+  const handleTouchMove = (e: React.TouchEvent) => {
+    const start = touchGesture.current;
+    if (!start || e.touches.length !== 2) return;
+    const [a, b] = [e.touches[0], e.touches[1]];
+    setZoomScale(Math.max(1, Math.min(2.2, start.zoom * Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) / start.distance)));
+    setPanOffset({ x: Math.max(-1200, Math.min(1200, start.panX + (a.clientX + b.clientX) / 2 - start.x)), y: Math.max(-1200, Math.min(1200, start.panY + (a.clientY + b.clientY) / 2 - start.y)) });
   };
 
   // Detect HP changes and trigger VFX
@@ -232,14 +841,33 @@ export function TacticalMap({
   const [customZonesLoaded, setCustomZonesLoaded] = useState<boolean>(false);
 
   // Determine current active biome
-  const currentBiome: 'village' | 'forest' | 'dungeon' =
+  const currentBiome: BiomeType =
     biome ||
     (battlemap?.biome as any) ||
-    (locationName.toLowerCase().includes('floresta') ? 'forest' : locationName.toLowerCase().includes('dungeon') || locationName.toLowerCase().includes('catacumba') ? 'dungeon' : 'village');
+    (locationName.toLowerCase().includes('floresta')
+      ? 'forest'
+      : locationName.toLowerCase().includes('ruina') || locationName.toLowerCase().includes('abadia')
+      ? 'ruins'
+      : locationName.toLowerCase().includes('canyon') || locationName.toLowerCase().includes('fenda') || locationName.toLowerCase().includes('desfiladeiro')
+      ? 'canyon'
+      : locationName.toLowerCase().includes('covil') || locationName.toLowerCase().includes('cratera')
+      ? 'lair'
+      : locationName.toLowerCase().includes('dungeon') || locationName.toLowerCase().includes('catacumba')
+      ? 'dungeon'
+      : 'village');
 
   const collisionProfile = MAP_COLLISION_PROFILES[currentBiome] || MAP_COLLISION_PROFILES.village;
-  const gridSize = customGridSize || collisionProfile.gridSize || (battlemap ? battlemap.width : dungeon ? dungeon.width : 8);
+  const gridSize = dungeonFloor ? dungeonFloor.width : customGridSize || collisionProfile.gridSize || (battlemap ? battlemap.width : dungeon ? dungeon.width : 8);
   const activeHero = characters.find((c) => c.id === selectedHeroId) || characters[0];
+  const expandedWorld = !dungeonFloor && gridSize === WORLD_SIZE;
+  useEffect(() => {
+    const viewport = boardViewportRef.current, stage = boardStageRef.current;
+    if (!viewport || !stage) return;
+    const center = () => setPanOffset({ x: viewport.clientWidth / 2 - stage.offsetWidth * ((activeHero?.x ?? gridSize / 2) + .5) / gridSize, y: viewport.clientHeight * .42 - stage.offsetHeight * ((activeHero?.y ?? gridSize / 2) + .5) / gridSize });
+    center();
+    const observer = new ResizeObserver(center); observer.observe(viewport);
+    return () => observer.disconnect();
+  }, [activeHero?.id, activeHero?.x, activeHero?.y, currentBiome, gridSize]);
 
   const [debugCollisions, setDebugCollisions] = useState(false);
 
@@ -293,6 +921,10 @@ export function TacticalMap({
     return MAP_COLLISION_PROFILES[currentBiome]?.customZones || [];
   }, [customZonesLoaded, customMapZones, currentBiome]);
 
+  const activePortals = useMemo(() => {
+    return (BIOME_PORTALS[currentBiome] || []).map(p => expandedWorld ? {...p, ...legacyWorldPoint(currentBiome, p.x, p.y)} : p);
+  }, [currentBiome, expandedWorld]);
+
   // Impactful Exploration -> Combat transition banner
   const [combatTransition, setCombatTransition] = useState(false);
   const wasCombatRef = useRef(isCombat);
@@ -307,9 +939,19 @@ export function TacticalMap({
 
   // Movement budget in combat (D&D 5e: Speed / 1.5m)
   const moveBudget = useMemo(() => {
-    const speed = activeHero?.speed || 9;
-    return calculateMovementBudget(speed, movementUsed);
-  }, [activeHero?.speed, movementUsed]);
+    const speed =
+      (activeHero?.speed || 9) +
+      movementBonusSquares * 1.5;
+
+    return calculateMovementBudget(
+      speed,
+      movementUsed
+    );
+  }, [
+    activeHero?.speed,
+    movementUsed,
+    movementBonusSquares
+  ]);
 
   // Set of occupied tiles (living entities other than active hero)
   const occupiedTiles = useMemo(() => {
@@ -327,7 +969,7 @@ export function TacticalMap({
     return set;
   }, [characters, enemies, activeHero?.id]);
 
-  // Fluid MMO-like Walk State with 340ms human neutral cadence & body sway
+  // Fluid MMO-like Walk State with 455ms human neutral cadence & body sway
   const [walkingHeroes, setWalkingHeroes] = useState<Record<string, { x: number; y: number; isWalking?: boolean }>>({});
   const walkTimersRef = useRef<Record<string, NodeJS.Timeout>>({});
   const lastRemoteSeqRef = useRef<number>(0);
@@ -365,8 +1007,8 @@ export function TacticalMap({
   const displayHeroes = useMemo(() => {
     return characters.map((c) => {
       const walk = walkingHeroes[c.id];
-      if (walk) {
-        return { ...c, x: walk.x, y: walk.y, isWalking: Boolean(walk.isWalking) } as Character & { isWalking?: boolean };
+      if (walk && walk.isWalking) {
+        return { ...c, x: walk.x, y: walk.y, isWalking: true } as Character & { isWalking?: boolean };
       }
       return { ...c, isWalking: false } as Character & { isWalking?: boolean };
     });
@@ -381,8 +1023,8 @@ export function TacticalMap({
     }
 
     let step = 0;
-    // Human neutral walking cadence: 340ms per tile (~2.94 squares/sec)
-    const stepInterval = 340;
+    // Human neutral walking cadence: 455ms per tile (~2.2 squares/sec)
+    const stepInterval = 455;
 
     // Set initial position
     setWalkingHeroes((prev) => ({
@@ -393,6 +1035,7 @@ export function TacticalMap({
     walkTimersRef.current[heroId] = setInterval(() => {
       step++;
       if (step < path.length) {
+        try { playSfx('step', 0.25); } catch {}
         setWalkingHeroes((prev) => ({
           ...prev,
           [heroId]: { x: path[step].x, y: path[step].y, isWalking: true }
@@ -403,26 +1046,36 @@ export function TacticalMap({
           delete walkTimersRef.current[heroId];
         }
         const finalDest = path[path.length - 1];
-        // RETAIN final destination in state so token NEVER rubberbands back
-        setWalkingHeroes((prev) => ({
-          ...prev,
-          [heroId]: { x: finalDest.x, y: finalDest.y, isWalking: false }
-        }));
         if (isLocalInitiator) {
           onMoveHero(heroId, finalDest.x, finalDest.y);
         }
+        // Clean up walkingHeroes cache so the token position is governed purely by characters state
+        setWalkingHeroes((prev) => {
+          const next = { ...prev };
+          delete next[heroId];
+          return next;
+        });
       }
     }, stepInterval);
   };
 
   // Sync remote player walks received via WebSocket Durable Object
   useEffect(() => {
-    if (remoteWalkPath && remoteWalkPath.waypoints && remoteWalkPath.waypoints.length > 1) {
+    if (remoteWalkPath && remoteWalkPath.waypoints && remoteWalkPath.waypoints.length > 0) {
       if (remoteWalkPath.seq !== lastRemoteSeqRef.current) {
         lastRemoteSeqRef.current = remoteWalkPath.seq;
-        const isCurrentHeroWalking = walkingHeroes[remoteWalkPath.characterId]?.isWalking;
-        if (!isCurrentHeroWalking) {
-          animateHeroPath(remoteWalkPath.characterId, remoteWalkPath.waypoints, false);
+        if (remoteWalkPath.waypoints.length > 1) {
+          const isCurrentHeroWalking = walkingHeroes[remoteWalkPath.characterId]?.isWalking;
+          if (!isCurrentHeroWalking) {
+            animateHeroPath(remoteWalkPath.characterId, remoteWalkPath.waypoints, false);
+          }
+        } else {
+          // Single square step: clean up any stale walk cache so token reflects final coordinates
+          setWalkingHeroes((prev) => {
+            const next = { ...prev };
+            delete next[remoteWalkPath.characterId];
+            return next;
+          });
         }
       }
     }
@@ -432,6 +1085,14 @@ export function TacticalMap({
   const activePath = useMemo(() => {
     if (!hoveredSquare || !activeHero || targetingAction) return [];
     if (currentHeroX === hoveredSquare.x && currentHeroY === hoveredSquare.y) return [];
+    if (dungeonFloor) {
+      return findDungeonPathAStar(
+        { x: currentHeroX, y: currentHeroY },
+        hoveredSquare,
+        dungeonFloor,
+        occupiedTiles
+      );
+    }
     return findPathAStar(
       { x: currentHeroX, y: currentHeroY },
       hoveredSquare,
@@ -440,7 +1101,7 @@ export function TacticalMap({
       occupiedTiles,
       activeZones
     );
-  }, [activeHero, currentHeroX, currentHeroY, hoveredSquare, targetingAction, currentBiome, gridSize, occupiedTiles, activeZones]);
+  }, [activeHero, currentHeroX, currentHeroY, hoveredSquare, targetingAction, dungeonFloor, currentBiome, gridSize, occupiedTiles, activeZones]);
 
   const pathStepCount = activePath.length > 0 ? activePath.length - 1 : 0;
   const pathMeters = (pathStepCount * 1.5).toFixed(1);
@@ -462,8 +1123,34 @@ export function TacticalMap({
     return dist <= targetingAction.rangeSquares;
   };
 
-  // Helper to determine tile type
+  // Helper to determine tile type and walkability
+  const isTileWalkable = (x: number, y: number): boolean => {
+    if (dungeonFloor) {
+      if (x < 0 || x >= dungeonFloor.width || y < 0 || y >= dungeonFloor.height) return false;
+      const t = dungeonFloor.tiles?.[y]?.[x];
+      if (!t) return false;
+      if (t.type === 'wall') return false;
+      if (t.type === 'door') {
+        const door = t.door;
+        if (door?.isSecret && !door.isOpen) return false;
+        if (!door?.isOpen) return false;
+      }
+      return true;
+    }
+    return isGridTileWalkable(currentBiome, x, y, gridSize, activeZones);
+  };
+
   const getTileInfo = (x: number, y: number) => {
+    if (dungeonFloor && dungeonFloor.tiles?.[y]?.[x]) {
+      const dt = dungeonFloor.tiles[y][x];
+      const isDoorBlocked = dt.type === 'door' && (!dt.door?.isOpen || (dt.door?.isSecret && !dt.door?.isOpen));
+      return {
+        type: dt.type as string,
+        blocksMovement: dt.type === 'wall' || isDoorBlocked,
+        blocksSight: dt.type === 'wall' || isDoorBlocked,
+        label: dt.door?.name || dt.chest?.name || dt.shrine?.name || undefined
+      };
+    }
     if (battlemap && battlemap.tiles[y]?.[x]) {
       const t = battlemap.tiles[y][x];
       return {
@@ -487,7 +1174,14 @@ export function TacticalMap({
 
   return (
     <div
-      className="relative w-full h-full select-none overflow-hidden cursor-default"
+        ref={boardViewportRef}
+        className="relative w-full h-full select-none overflow-hidden cursor-default"
+        style={{ touchAction: 'none' }}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={() => { touchGesture.current = null; }}
+        onTouchCancel={() => { touchGesture.current = null; gestureConsumed.current = false; }}
+        onClickCapture={e => { if (gestureConsumed.current) { e.stopPropagation(); e.preventDefault(); gestureConsumed.current = false; } }}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
@@ -500,7 +1194,7 @@ export function TacticalMap({
         data-board-bg="true"
       >
         {/* In-Game Location Pill (Floating Top-Left) */}
-        <div className="absolute top-2.5 left-2.5 z-30 flex items-center gap-1.5 bg-zinc-950/85 border border-zinc-700/80 rounded-full px-2.5 py-1 text-xs backdrop-blur-md shadow-lg pointer-events-none">
+        <div className="map-location absolute top-2.5 left-2.5 z-30 flex items-center gap-1.5 bg-zinc-950/85 border border-zinc-700/80 rounded-full px-2.5 py-1 text-xs backdrop-blur-md shadow-lg pointer-events-none">
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
           <span className="font-serif font-bold text-amber-200 tracking-wide text-xs truncate max-w-[130px] sm:max-w-[200px]">
             {locationName}
@@ -511,7 +1205,7 @@ export function TacticalMap({
         </div>
 
         {/* In-Game Vision & Scale Controls + Collision Debug Toggle (Floating Top-Right) */}
-        <div className="absolute top-2.5 right-2.5 z-30 flex items-center gap-1 bg-[#111612]/90 border border-zinc-700/80 rounded-full px-2 py-1 text-xs backdrop-blur-md shadow-lg pointer-events-auto">
+        <div className="map-controls absolute top-2.5 right-2.5 z-30 flex items-center gap-1 bg-[#111612]/90 border border-zinc-700/80 rounded-full px-2 py-1 text-xs backdrop-blur-md shadow-lg pointer-events-auto">
           <button
             type="button"
             onClick={handleCenterHero}
@@ -568,7 +1262,7 @@ export function TacticalMap({
 
         {/* In-Game Targeting Bar (Floating Top-Center) */}
         {targetingAction && (
-          <div className="absolute top-2.5 left-1/2 -translate-x-1/2 z-35 bg-gradient-to-r from-red-950 via-amber-950 to-red-950 border border-amber-400/90 rounded-full px-3.5 py-1 flex items-center gap-3 animate-fade-in shadow-[0_0_20px_rgba(239,68,68,0.5)] backdrop-blur-md pointer-events-auto">
+          <div className="map-targeting absolute top-2.5 left-1/2 -translate-x-1/2 z-35 bg-gradient-to-r from-red-950 via-amber-950 to-red-950 border border-amber-400/90 rounded-full px-3.5 py-1 flex items-center gap-3 animate-fade-in shadow-[0_0_20px_rgba(239,68,68,0.5)] backdrop-blur-md pointer-events-auto">
             <div className="flex items-center gap-1.5 text-xs font-bold text-amber-200">
               <Crosshair size={13} className="text-red-400 animate-spin-slow" />
               <span className="tracking-wide">ALVO: {targetingAction.name}</span>
@@ -621,19 +1315,61 @@ export function TacticalMap({
         {/* Dynamic Grid Container — Edge-to-Edge Full Screen Game Board */}
         <div className="absolute inset-0 w-full h-full overflow-hidden pointer-events-none" data-board-bg="true">
           <div
+            ref={boardStageRef}
             style={{
               transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoomScale})`,
-              transformOrigin: 'center center',
+              transformOrigin: `${((activeHero?.x ?? gridSize / 2) + .5) / gridSize * 100}% ${((activeHero?.y ?? gridSize / 2) + .5) / gridSize * 100}%`,
+              ...(expandedWorld ? {width: WORLD_SIZE * 44, height: WORLD_SIZE * 44, maxWidth:'none', margin:0, backgroundImage:`url(/art/terrain/terrain-${Math.max(0, ['village','forest','ruins','dungeon','canyon','lair'].indexOf(currentBiome)) * 6}.webp)`, backgroundSize:'352px 352px'} : {}),
               transition: isDragging ? 'none' : 'transform 0.15s cubic-bezier(0.16, 1, 0.3, 1)'
             }}
             className="relative w-full max-w-6xl aspect-[16/9] mx-auto touch-manipulation pointer-events-auto select-none rounded-2xl overflow-hidden shadow-2xl border border-stone-800/80"
           >
             {/* 1. Base Illustrated Map Artwork */}
-            <img
-              src={collisionProfile.imageSrc}
-              alt="Mapa Ilustrado"
-              className="absolute inset-0 w-full h-full object-fill select-none pointer-events-none z-0"
-            />
+            {dungeonFloor ? (
+              <div className="absolute inset-0 w-full h-full bg-[#050806] select-none pointer-events-none z-0 overflow-hidden">
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: `repeat(${dungeonFloor.width}, minmax(0, 1fr))`,
+                    gridTemplateRows: `repeat(${dungeonFloor.height}, minmax(0, 1fr))`
+                  }}
+                  className="w-full h-full"
+                >
+                  {dungeonFloor.tiles.flatMap((row, ry) =>
+                    row.map((cell, rx) => {
+                      const isWall = cell.type === 'wall';
+                      let bgClass = 'bg-[#0a0f0d] border border-stone-800/30';
+                      if (isWall) {
+                        bgClass = 'bg-gradient-to-b from-[#18201a] via-[#101612] to-[#070b09] border border-[#232c25] shadow-inner';
+                      } else if (cell.roomPurpose === 'shrine') {
+                        bgClass = 'bg-[#071813] border border-emerald-800/25';
+                      } else if (cell.roomPurpose === 'combat') {
+                        bgClass = 'bg-[#15110d] border border-amber-900/25';
+                      } else if (cell.roomPurpose === 'secret' || cell.roomPurpose === 'treasure') {
+                        bgClass = 'bg-[#120b1c] border border-purple-900/25';
+                      } else if (cell.roomPurpose === 'boss') {
+                        bgClass = 'bg-[#1d0808] border border-red-900/30';
+                      }
+                      return (
+                        <div key={`${rx}-${ry}`} className={`relative w-full h-full ${bgClass}`}>
+                          {isWall && (
+                            <div className="absolute inset-0.5 border-t border-l border-white/10 rounded-xs" />
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            ) : !expandedWorld ? (
+              <img
+                src={collisionProfile.imageSrc}
+                alt="Mapa Ilustrado"
+                style={expandedWorld ? {left: `${CORE_START / WORLD_SIZE * 100}%`,top:`${CORE_START / WORLD_SIZE * 100}%`,width:`${CORE_SIZE / WORLD_SIZE * 100}%`,height:`${CORE_SIZE / WORLD_SIZE * 100}%`} : undefined}
+                className="absolute inset-0 w-full h-full object-fill select-none pointer-events-none z-0"
+              />
+            ) : null}
+            {expandedWorld && worldProps(currentBiome).map(prop => prop.kind==='water'?<div key={prop.id} aria-hidden="true" style={{position:'absolute',left:`${prop.x / WORLD_SIZE * 100}%`,top:`${prop.y / WORLD_SIZE * 100}%`,width:`${100 / WORLD_SIZE}%`,height:`${100 / WORLD_SIZE}%`,background:'#23566a',pointerEvents:'none'}} />:<img key={prop.id} src={`/art/scenery/prop-${prop.art??(prop.kind==='house'?12:prop.kind==='tree'?0:6)}.webp`} alt="" style={{position:'absolute',left:`${(prop.x+.5)/WORLD_SIZE*100}%`,top:`${(prop.y+.5)/WORLD_SIZE*100}%`,width:prop.size*120,height:prop.size*120,transform:'translate(-50%,-80%)',objectFit:'contain',pointerEvents:'none'}} />)}
 
             {/* 2. Ambient Lighting & Atmospheric Fantasy Vignette */}
             <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-transparent to-black/35 pointer-events-none z-[1]" />
@@ -758,7 +1494,11 @@ export function TacticalMap({
               const isHovered = hoveredSquare?.x === x && hoveredSquare?.y === y;
 
               const isVillage = battlemap?.biome === 'village' || locationName.toLowerCase().includes('vila');
-              const tileNpcs = isVillage ? (npcs || []).filter((n) => n.x === x && n.y === y) : [];
+              const tileNpcs = (npcs || []).filter((n) => {
+                if (n.x !== x || n.y !== y) return false;
+                if (n.biome) return n.biome === currentBiome;
+                return currentBiome === 'village';
+              });
               const tileHeroes = displayHeroes.filter((c) => c.x === x && c.y === y);
               const tileEnemies = enemies.filter((e) => e.x === x && e.y === y && e.hp > 0);
               const hasEntities = tileHeroes.length > 0 || tileEnemies.length > 0 || tileNpcs.length > 0;
@@ -768,9 +1508,8 @@ export function TacticalMap({
 
               const tile = getTileInfo(x, y);
               const tType = tile.type;
-              const isCenterCampfire = x === Math.floor(gridSize / 2) && y === Math.floor(gridSize / 2);
 
-              const isWalkable = isGridTileWalkable(currentBiome, x, y, gridSize, activeZones);
+              const isWalkable = isTileWalkable(x, y);
               const isOnActivePath = activePath.some((p) => p.x === x && p.y === y);
 
               // Translucent tactical cell styling over the illustrated map
@@ -797,9 +1536,45 @@ export function TacticalMap({
                   onMouseLeave={() => setHoveredSquare(null)}
                   onClick={() => {
                     if (targetingAction) {
-                      const enemyTarget = tileEnemies[0];
-                      if (enemyTarget && inRange) {
-                        onTargetEnemy(enemyTarget.id);
+                      if (
+                        (
+                          targetingAction.targetMode ===
+                            'area' ||
+                          targetingAction.targetMode ===
+                            'point'
+                        ) &&
+                        inRange &&
+                        onTargetSquare
+                      ) {
+                        onTargetSquare(
+                          x,
+                          y
+                        );
+                      } else if (
+                        (
+                          targetingAction.targetMode ===
+                            'ally' ||
+                          targetingAction.targetMode ===
+                            'self'
+                        ) &&
+                        tileHeroes.length > 0 &&
+                        onTargetHero
+                      ) {
+                        onTargetHero(
+                          tileHeroes[0].id
+                        );
+                      } else {
+                        const enemyTarget =
+                          tileEnemies[0];
+
+                        if (
+                          enemyTarget &&
+                          inRange
+                        ) {
+                          onTargetEnemy(
+                            enemyTarget.id
+                          );
+                        }
                       }
                     } else if (tileNpcs.length > 0) {
                       const npc = tileNpcs[0];
@@ -809,29 +1584,40 @@ export function TacticalMap({
                       } else if (canMove && activeHero && isWalkable) {
                         if (!isCombat && activePath.length > 1) {
                           onMoveHeroPath?.(activeHero.id, activePath);
-                          animateHeroPath(activeHero.id, activePath, true);
+                          animateHeroPath(activeHero.id, activePath, false);
                         } else {
                           onMoveHero(activeHero.id, x, y);
                         }
                       }
                     } else if (tileEnemies.length > 0) {
-                      setContextEnemy(tileEnemies[0]);
-                      onSelectToken('enemy', tileEnemies[0].id);
-                    } else if (['chest', 'shrine', 'stairs', 'well'].includes(tType)) {
+                      const enemy = tileEnemies[0];
+                      setContextEnemy(enemy);
+                      onSelectToken('enemy', enemy.id);
+                      const dist = activeHero ? Math.max(Math.abs(currentHeroX - x), Math.abs(currentHeroY - y)) : 99;
+                      if (dist <= 1) {
+                        onTargetEnemy(enemy.id);
+                      }
+                    } else if (activePortals.some((p) => p.x === x && p.y === y)) {
+                      const pObj = activePortals.find((p) => p.x === x && p.y === y)!;
+                      if (onNavigatePortal) {
+                        try { playSfx('door'); } catch {}
+                        onNavigatePortal(pObj.targetBiome, pObj.targetLocationIndex);
+                      }
+                    } else if (['chest', 'shrine', 'stairs', 'well', 'door', 'trap', 'extraction', 'dungeon_entrance'].includes(tType)) {
                       onInteractObject?.(tType, x, y);
                     } else if (canMove && activeHero && !hasEntities) {
                       if (isWalkable) {
                         if (!isCombat) {
                           if (activePath.length > 1) {
                             onMoveHeroPath?.(activeHero.id, activePath);
-                            animateHeroPath(activeHero.id, activePath, true);
+                            animateHeroPath(activeHero.id, activePath, false);
                           } else {
                             onMoveHero(activeHero.id, x, y);
                           }
                         } else if (pathStepCount > 0 && isPathAffordable) {
                           if (activePath.length > 1) {
                             onMoveHeroPath?.(activeHero.id, activePath);
-                            animateHeroPath(activeHero.id, activePath, true);
+                            animateHeroPath(activeHero.id, activePath, false);
                           } else {
                             onMoveHero(activeHero.id, x, y);
                           }
@@ -853,443 +1639,210 @@ export function TacticalMap({
                       : tileBg
                   }`}
                 >
-                  {/* Organic Visual Embellishments */}
-                {illuminated && (
-                  <>
-                    {/* Water flow line */}
-                    {tType === 'water' && (
-                      <div className="absolute inset-0 flex items-center justify-center opacity-40">
-                        <Droplets size={10} className="text-sky-300 animate-pulse" />
+                {/* ═══ INTERACTIVE OBJECTS FOR DUNGEON CRAWLER FLOOR ═══ */}
+                {dungeonFloor && tType === 'door' && (
+                  <div
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onInteractObject?.('door', x, y);
+                    }}
+                    className="absolute inset-0 flex flex-col items-center justify-center cursor-pointer pointer-events-auto z-15"
+                    title={tile.label || 'Porta'}
+                  >
+                    {dungeonFloor.tiles?.[y]?.[x]?.door?.isOpen ? (
+                      <div className="w-full h-full flex items-center justify-center opacity-60 bg-emerald-950/20 border border-emerald-500/30 rounded">
+                        <span className="text-xs">🚪</span>
+                      </div>
+                    ) : dungeonFloor.tiles?.[y]?.[x]?.door?.isSecret ? (
+                      <div className="w-full h-full flex flex-col items-center justify-center bg-purple-950/80 border-2 border-purple-500 rounded shadow-[0_0_15px_rgba(168,85,247,0.7)] animate-pulse">
+                        <span className="text-xs">👁️</span>
+                        <span className="text-[7px] text-purple-200 font-bold">Passagem</span>
+                      </div>
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-b from-amber-950 via-stone-900 to-amber-950 border-2 border-amber-600/80 rounded shadow-md group hover:border-amber-400">
+                        <span className="text-xs">🚪</span>
+                        <span className="text-[7px] text-amber-300 font-bold">Abrir</span>
                       </div>
                     )}
-
-                    {/* Wooden Bridge Planks */}
-                    {tType === 'bridge' && (
-                      <div className="absolute inset-0 flex flex-col justify-between py-0.5 px-0.5 opacity-60 pointer-events-none">
-                        <div className="h-0.5 w-full bg-amber-900" />
-                        <div className="h-0.5 w-full bg-amber-900" />
-                        <div className="h-0.5 w-full bg-amber-900" />
-                      </div>
-                    )}
-
-                    {/* Tree Foliage Canopy */}
-                    {tType === 'tree' && (
-                      <div
-                        className="w-4/5 h-4/5 rounded-full bg-emerald-800 border border-emerald-600 shadow-md flex items-center justify-center"
-                        title="Árvore / Bosque (Concede cobertura)"
-                      >
-                        <div className="w-1.5 h-1.5 rounded-full bg-amber-900/80" />
-                      </div>
-                    )}
-
-                    {/* Stone Well */}
-                    {tType === 'well' && (
-                      <div
-                        className="w-4/5 h-4/5 rounded-full bg-stone-700 border-2 border-stone-500 flex items-center justify-center shadow"
-                        title="Poço da Vila (Água fresca)"
-                      >
-                        <div className="w-2 h-2 rounded-full bg-sky-500" />
-                      </div>
-                    )}
-
-                    {/* Chest */}
-                    {tType === 'chest' && (
-                      <div
-                        className="w-5 h-5 rounded-md bg-amber-950/90 border border-amber-400 flex items-center justify-center text-amber-300 animate-bounce"
-                        title="Baú de Suprimentos (Examinar)"
-                      >
-                        <Package size={11} />
-                      </div>
-                    )}
-
-                    {/* Shrine / Menir */}
-                    {tType === 'shrine' && (
-                      <div
-                        className="w-5 h-5 rounded-full bg-emerald-950/90 border border-emerald-400 flex items-center justify-center text-emerald-300 animate-pulse"
-                        title="Altar Sagrado / Menir dos Druidas"
-                      >
-                        <Sparkles size={11} />
-                      </div>
-                    )}
-
-                    {/* Stairs */}
-                    {tType === 'stairs' && (
-                      <div
-                        className="w-5 h-5 rounded-md bg-purple-950/90 border border-purple-400 flex items-center justify-center text-purple-300 animate-pulse"
-                        title="Escadas para o Próximo Nível"
-                      >
-                        <ArrowDownCircle size={12} />
-                      </div>
-                    )}
-                    {/* Campfire (Center feature as seen in reference image) */}
-                    {isCenterCampfire && (
-                      <div className="relative flex items-center justify-center pointer-events-none" title="Fogueira Central">
-                        <div className="absolute w-8 h-8 rounded-full campfire-ambient opacity-75 pointer-events-none" />
-                        <Flame size={18} className="text-amber-400 animate-bounce relative z-10 drop-shadow-[0_0_10px_rgba(245,158,11,1)]" />
-                      </div>
-                    )}
-                  </>
+                  </div>
                 )}
 
-                {/* Movement distance preview tooltip */}
+                {dungeonFloor && tType === 'chest' && (
+                  <div
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onInteractObject?.('chest', x, y);
+                    }}
+                    className="absolute inset-0 flex flex-col items-center justify-center cursor-pointer pointer-events-auto z-15 group"
+                    title={tile.label || 'Baú Rúnico'}
+                  >
+                    {dungeonFloor.tiles?.[y]?.[x]?.chest?.isOpened ? (
+                      <div className="w-full h-full flex items-center justify-center opacity-40">
+                        <span className="text-sm">📦</span>
+                      </div>
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center bg-amber-950/60 border border-amber-400/80 rounded shadow-[0_0_15px_rgba(245,158,11,0.6)] animate-pulse group-hover:scale-110 transition-transform">
+                        <span className="text-sm">🪙</span>
+                        <span className="text-[7px] text-amber-300 font-bold">Baú</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {dungeonFloor && tType === 'shrine' && (
+                  <div
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onInteractObject?.('shrine', x, y);
+                    }}
+                    className="absolute inset-0 flex flex-col items-center justify-center cursor-pointer pointer-events-auto z-15 group"
+                    title={tile.label || 'Fonte Sagrada'}
+                  >
+                    <div className="w-full h-full flex flex-col items-center justify-center bg-emerald-950/60 border border-emerald-400/80 rounded shadow-[0_0_18px_rgba(16,185,129,0.7)] animate-pulse group-hover:scale-110 transition-transform">
+                      <span className="text-sm">🌿</span>
+                      <span className="text-[7px] text-emerald-300 font-bold">Fonte</span>
+                    </div>
+                  </div>
+                )}
+
+                {dungeonFloor && tType === 'trap' && (dungeonFloor.tiles?.[y]?.[x]?.trap?.isRevealed || dungeonFloor.tiles?.[y]?.[x]?.trap?.isTriggered) && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-15">
+                    <div className="w-full h-full flex flex-col items-center justify-center bg-red-950/60 border border-red-500/80 rounded shadow-[0_0_15px_rgba(239,68,68,0.7)] animate-pulse">
+                      <span className="text-xs">⚡</span>
+                      <span className="text-[7px] text-red-300 font-mono font-bold">Glifo</span>
+                    </div>
+                  </div>
+                )}
+
+                {dungeonFloor && tType === 'stairs' && (
+                  <div
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onInteractObject?.('stairs', x, y);
+                    }}
+                    className="absolute inset-0 flex flex-col items-center justify-center cursor-pointer pointer-events-auto z-20 group"
+                    title={dungeonFloor.stairsDown.isUnlocked ? 'Descer para o Próximo Andar' : 'Escadaria Selada (Vença o Chefe)'}
+                  >
+                    {dungeonFloor.stairsDown.isUnlocked ? (
+                      <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-t from-amber-500/40 via-yellow-500/20 to-transparent border-2 border-amber-300 rounded shadow-[0_0_25px_rgba(245,158,11,0.9)] animate-bounce group-hover:scale-110 transition-transform">
+                        <span className="text-base">✨</span>
+                        <span className="text-[7px] text-amber-200 font-bold whitespace-nowrap bg-black/80 px-1 rounded border border-amber-400">
+                          Andar {dungeonFloor.floorNumber + 1}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center bg-zinc-950/80 border border-red-500/70 rounded opacity-80">
+                        <span className="text-xs">🔒</span>
+                        <span className="text-[7px] text-red-300 font-bold">Selada</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {dungeonFloor && tType === 'extraction' && (
+                  <div
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onInteractObject?.('extraction', x, y);
+                    }}
+                    className="absolute inset-0 flex flex-col items-center justify-center cursor-pointer pointer-events-auto z-20 group"
+                    title="Ponto de Extração (Salvar Loot e Retornar)"
+                  >
+                    <div className="w-full h-full flex flex-col items-center justify-center bg-emerald-950/40 border border-emerald-400/80 rounded shadow-[0_0_20px_rgba(16,185,129,0.8)] animate-pulse group-hover:scale-110 transition-transform">
+                      <span className="text-sm">🛡️</span>
+                      <span className="text-[7px] text-emerald-200 font-bold whitespace-nowrap bg-black/80 px-1 rounded border border-emerald-400">
+                        Extrair
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* ═══ DESCIDA PARA AS CATACUMBAS PROFUNDAS NO MAPA BASE ═══ */}
+                {!dungeonFloor && currentBiome === 'dungeon' && x === 6 && y === 6 && (
+                  <div
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onInteractObject?.('dungeon_entrance', 6, 6);
+                    }}
+                    className="absolute inset-0 flex flex-col items-center justify-center cursor-pointer pointer-events-auto group z-25"
+                    title="Adentrar as Catacumbas Profundas (Dungeon Crawler)"
+                  >
+                    <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-600/70 via-zinc-900 to-black border-2 border-amber-400 flex items-center justify-center text-lg shadow-[0_0_25px_rgba(245,158,11,0.9)] animate-bounce group-hover:scale-125 transition-transform">
+                      <span>💀</span>
+                    </div>
+                    <div className="absolute -bottom-5 bg-zinc-950/95 border border-amber-400 text-amber-300 font-serif text-[8px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap shadow-xl">
+                      Descida: Masmorra Sem Fim
+                    </div>
+                  </div>
+                )}
+                {/* Physical Adventure Portals rendered cleanly on the map */}
+                {illuminated && activePortals.filter((p) => p.x === x && p.y === y).map((portal, pIdx) => (
+                  <div
+                    key={pIdx}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (onNavigatePortal) {
+                        try { playSfx('door'); } catch {}
+                        onNavigatePortal(portal.targetBiome, portal.targetLocationIndex);
+                      }
+                    }}
+                    className="absolute inset-0 flex flex-col items-center justify-center cursor-pointer pointer-events-auto group z-20"
+                    title={`Passar pelo portal: ${portal.label}`}
+                  >
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-500/40 via-yellow-500/30 to-amber-700/50 border-2 border-amber-300 flex items-center justify-center text-base shadow-[0_0_20px_rgba(245,158,11,0.8)] animate-pulse group-hover:scale-125 transition-transform">
+                      <span>{portal.icon}</span>
+                    </div>
+                    <div className="absolute -bottom-5 bg-zinc-950/95 border border-amber-400 text-amber-200 font-serif text-[8px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap shadow-lg group-hover:opacity-100 opacity-90 transition-opacity">
+                      {portal.label.split(':')[0]}
+                    </div>
+                  </div>
+                ))}
+
+                {/* Movement distance preview tooltip with D&D 5e distance standards */}
                 {isHovered && activePath.length > 1 && !hasEntities && illuminated && (
-                  <div className="absolute -top-6 z-30 pointer-events-none bg-black/95 border border-zinc-700 px-1.5 py-0.5 rounded text-[9px] font-mono text-zinc-200 whitespace-nowrap shadow-md">
-                    <span className={isPathAffordable ? 'text-emerald-400' : 'text-red-400'}>
-                      {pathMeters}m ({pathStepCount}q)
+                  <div className="absolute -top-7 z-30 pointer-events-none bg-black/95 border border-zinc-700 px-2 py-0.5 rounded text-[9px] font-mono text-zinc-200 whitespace-nowrap shadow-md flex items-center gap-1">
+                    <span className={isPathAffordable ? 'text-emerald-400 font-bold' : 'text-red-400 font-bold'}>
+                      {pathMeters}m ({pathStepCount}q • 1.5m/q)
                     </span>
                   </div>
                 )}
 
-                {/* TOKENS */}
-                {/* 1. Heroes */}
-                {tileHeroes.map((hero) => {
-                  const isSelected = hero.id === selectedHeroId;
-                  const isActiveTurn = isCombat && (hero.id === activeTurnId);
-                  const hpRatio = hero.hp / hero.maxHp;
-                  const conditions = (hero as any).conditions || [];
-                  const statusClasses = conditions.map((c: string) => getStatusClass(c)).filter(Boolean).join(' ');
-
-                  // Fallen / Dead Hero Token (Do NOT let token disappear into thin air)
-                  if (hero.hp <= 0) {
-                    return (
-                      <div
-                        key={hero.id}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (onInteractPlayer && hero.id !== selectedHeroId) {
-                            onInteractPlayer(hero);
-                          } else {
-                            onSelectToken('hero', hero.id);
-                          }
-                        }}
-                        className="relative z-10 w-7 h-7 sm:w-9 sm:h-9 rounded-full flex flex-col items-center justify-center cursor-pointer ring-2 ring-red-700 bg-gradient-to-br from-zinc-950 via-red-950 to-black grayscale opacity-80 token-smooth-glide shadow-lg"
-                        title={`${hero.name} (INCONSCIENTE / 0 PV)`}
-                      >
-                        <span className="text-sm select-none drop-shadow">💀</span>
-                        <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-red-950 border border-red-700 text-red-300 font-mono text-[7px] px-1 rounded-full uppercase tracking-tight whitespace-nowrap z-20">
-                          0 PV
-                        </div>
-                      </div>
-                    );
-                  }
-
-                    return (
-                      <div
-                        key={hero.id}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (onInteractPlayer && hero.id !== selectedHeroId) {
-                            onInteractPlayer(hero);
-                          } else {
-                            onSelectToken('hero', hero.id);
-                          }
-                        }}
-                      className={`relative z-10 w-7 h-7 sm:w-9 sm:h-9 rounded-full flex flex-col items-center justify-center cursor-pointer ${(hero as any).isWalking ? 'token-walking-active' : 'token-human-sway'} token-smooth-glide ${
-                        isActiveTurn
-                          ? 'ring-4 ring-amber-400 ring-offset-2 ring-offset-black scale-115 shadow-[0_0_25px_rgba(251,191,36,0.9)] token-selected-pulse'
-                          : isSelected
-                          ? 'ring-2 ring-amber-400 ring-offset-1 ring-offset-black scale-110 token-selected-pulse'
-                          : 'ring-[1.5px] ring-amber-600/70 shadow-lg hover:scale-105'
-                      } bg-gradient-to-br from-[#2d2417] via-[#1a1711] to-black transition-transform ${statusClasses}`}
-                      title={`${hero.name} (${hero.hp}/${hero.maxHp} PV)${isActiveTurn ? ' • SEU TURNO ATIVO' : ''}`}
-                    >
-                      {/* Active Turn Pulsing Halo */}
-                      {isActiveTurn && (
-                        <div className="absolute -inset-2 rounded-full border-2 border-amber-400 animate-ping opacity-60 pointer-events-none" />
-                      )}
-
-                      {/* Turn Badge on Token */}
-                      {isActiveTurn && (
-                        <div className="absolute -bottom-3.5 left-1/2 -translate-x-1/2 bg-amber-400 text-black font-black text-[7px] sm:text-[8px] px-1 rounded-full uppercase tracking-wider shadow-lg z-30 animate-pulse pointer-events-none whitespace-nowrap">
-                          VEZ
-                        </div>
-                      )}
-
-                      {/* VFX Overlay */}
-                      {activeVfx[hero.id] && <div className={activeVfx[hero.id]} />}
-
-                      {/* Mini HP Bar (Dinamica, ACIMA do token) */}
-                      <div className="absolute -top-3 left-1/2 -translate-x-1/2 w-[130%] max-w-[42px] h-[5px] bg-black/95 rounded-full border border-zinc-500/80 overflow-hidden shadow-lg z-20">
-                        <div
-                          style={{ width: `${Math.min(100, hpRatio * 100)}%` }}
-                          className={`h-full transition-all duration-500 ease-out ${
-                            hpRatio > 0.5 ? 'bg-gradient-to-r from-emerald-500 to-green-400' : hpRatio > 0.2 ? 'bg-gradient-to-r from-amber-500 to-yellow-400' : 'bg-gradient-to-r from-red-600 to-red-400'
-                          }`}
-                        />
-                      </div>
-
-                      {/* HP Number (appears on hover/selected, above the HP bar) */}
-                      {(isSelected || isActiveTurn) && (
-                        <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-zinc-950/95 border border-amber-500/60 px-1.5 py-0 rounded text-[8px] font-mono font-bold text-amber-200 whitespace-nowrap z-30 shadow-md pointer-events-none">
-                          {hero.hp}/{hero.maxHp}
-                        </div>
-                      )}
-
-                      {/* Status Effect Dots */}
-                      {conditions.length > 0 && (
-                        <div className="absolute -top-1 -right-1 flex gap-0.5 z-20">
-                          {conditions.slice(0, 3).map((c: string, i: number) => (
-                            <div key={i} className={`w-[5px] h-[5px] rounded-full ${getStatusDotColor(c)} shadow-sm`} title={c} />
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Token Letter */}
-                      <span className="font-serif font-black text-[11px] sm:text-sm text-amber-100 drop-shadow-sm">
-                        {hero.name[0]}
-                      </span>
-                    </div>
-                  );
-                })}
-
-                {/* 2. Enemies */}
-                {tileEnemies.map((enemy) => {
-                  const isSelected = enemy.id === selectedEnemyId;
-                  const isActiveTurn = isCombat && (enemy.id === activeTurnId);
-                  const hpRatio = enemy.hp / enemy.maxHp;
-                  const conditions = (enemy as any).conditions || [];
-                  const statusClasses = conditions.map((c: string) => getStatusClass(c)).filter(Boolean).join(' ');
-                  const isTargeted = targetingAction && inRange;
-
-                  return (
-                    <div
-                      key={enemy.id}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (targetingAction && inRange) {
-                          onTargetEnemy(enemy.id);
-                        } else {
-                          onSelectToken('enemy', enemy.id);
-                          setContextEnemy(enemy);
-                        }
-                      }}
-                      className={`relative z-10 w-7 h-7 sm:w-9 sm:h-9 rounded-full flex flex-col items-center justify-center cursor-pointer token-smooth-glide token-human-sway ${
-                        isActiveTurn
-                          ? 'ring-4 ring-red-500 ring-offset-2 ring-offset-black scale-115 shadow-[0_0_25px_rgba(239,68,68,0.9)] token-target-pulse'
-                          : isSelected
-                          ? 'ring-2 ring-red-500 ring-offset-1 ring-offset-black scale-110 token-target-pulse'
-                          : isTargeted
-                          ? 'ring-2 ring-amber-400/80 ring-offset-1 ring-offset-black scale-105 animate-pulse'
-                          : 'ring-[1.5px] ring-red-700/80 shadow-lg hover:scale-105'
-                      } bg-gradient-to-br from-red-800 via-red-950 to-zinc-950 transition-transform ${statusClasses}`}
-                      title={`${enemy.name} (${enemy.hp}/${enemy.maxHp} PV) • CA ${enemy.ac}${isActiveTurn ? ' • TURNO ATIVO' : ''}`}
-                    >
-                      {/* Active Turn Pulsing Halo */}
-                      {isActiveTurn && (
-                        <div className="absolute -inset-2 rounded-full border-2 border-red-500 animate-ping opacity-60 pointer-events-none" />
-                      )}
-
-                      {/* Turn Badge on Token */}
-                      {isActiveTurn && (
-                        <div className="absolute -bottom-3.5 left-1/2 -translate-x-1/2 bg-red-600 text-white font-black text-[7px] sm:text-[8px] px-1 rounded-full uppercase tracking-wider shadow-lg z-30 animate-pulse pointer-events-none whitespace-nowrap">
-                          VEZ
-                        </div>
-                      )}
-
-                      {/* VFX Overlay */}
-                      {activeVfx[enemy.id] && <div className={activeVfx[enemy.id]} />}
-
-                      {/* Mini HP Bar (Dinamica, ACIMA do token) */}
-                      <div className="absolute -top-3 left-1/2 -translate-x-1/2 w-[130%] max-w-[42px] h-[5px] bg-black/95 rounded-full border border-zinc-500/80 overflow-hidden shadow-lg z-20">
-                        <div
-                          style={{ width: `${Math.min(100, hpRatio * 100)}%` }}
-                          className={`h-full transition-all duration-500 ease-out ${
-                            hpRatio > 0.5 ? 'bg-gradient-to-r from-red-500 to-rose-400' : hpRatio > 0.2 ? 'bg-gradient-to-r from-amber-500 to-orange-400' : 'bg-gradient-to-r from-red-700 to-red-500'
-                          }`}
-                        />
-                      </div>
-
-                      {/* HP Number (appears on hover/selected, above the HP bar) */}
-                      {isSelected && (
-                        <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-zinc-950/95 border border-red-600/60 px-1.5 py-0 rounded text-[8px] font-mono font-bold text-red-200 whitespace-nowrap z-30 shadow-md pointer-events-none">
-                          {enemy.hp}/{enemy.maxHp}
-                        </div>
-                      )}
-
-                      {/* Status Effect Dots */}
-                      {conditions.length > 0 && (
-                        <div className="absolute -top-1 -right-1 flex gap-0.5 z-20">
-                          {conditions.slice(0, 3).map((c: string, i: number) => (
-                            <div key={i} className={`w-[5px] h-[5px] rounded-full ${getStatusDotColor(c)} shadow-sm`} title={c} />
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Targeting Reticle Overlay */}
-                      {isTargeted && (
-                        <div className="absolute inset-0 rounded-full border-2 border-dashed border-amber-400/70 animate-spin-slow pointer-events-none z-15" />
-                      )}
-
-                      {/* Token Letter */}
-                      <span className="font-serif font-black text-[11px] sm:text-sm text-red-200 drop-shadow-sm">
-                        {enemy.name[0]}
-                      </span>
-
-                      {/* FLOATING CONTEXT ACTION MENU ANCHORED BESIDE THE TOKEN */}
-                      {contextEnemy?.id === enemy.id && (
-                        <div
-                          onClick={(e) => e.stopPropagation()}
-                          className={`absolute z-[60] w-64 sm:w-72 bg-zinc-950/98 border-2 border-red-500/90 rounded-2xl p-3 shadow-[0_0_35px_rgba(239,68,68,0.5)] backdrop-blur-2xl pointer-events-auto cursor-default animate-fade-in text-left ${
-                            enemy.x >= 9 ? 'right-full mr-3' : 'left-full ml-3'
-                          } ${
-                            enemy.y >= 10 ? 'bottom-0' : 'top-1/2 -translate-y-1/2'
-                          }`}
-                        >
-                          {/* Header */}
-                          <div className="flex items-center justify-between mb-2.5 pb-2 border-b border-zinc-800/80">
-                            <div className="flex items-center gap-2">
-                              <div className="w-8 h-8 rounded-xl bg-red-950 border border-red-500/80 flex items-center justify-center font-serif font-black text-red-200 text-sm shadow">
-                                {enemy.name[0]}
-                              </div>
-                              <div className="min-w-0">
-                                <h4 className="font-bold text-red-200 text-xs sm:text-sm leading-tight truncate">
-                                  {enemy.name}
-                                </h4>
-                                <div className="flex items-center gap-2 text-[10px] font-mono mt-0.5">
-                                  <span className="text-red-400 font-bold">{enemy.hp}/{enemy.maxHp} PV</span>
-                                  <span className="text-amber-400">CA {enemy.ac}</span>
-                                </div>
-                              </div>
-                            </div>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setContextEnemy(null);
-                              }}
-                              className="p-1 rounded-lg text-zinc-500 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
-                              title="Fechar"
-                            >
-                              <X size={14} />
-                            </button>
-                          </div>
-
-                          {/* Action Buttons based on Hero class */}
-                          <div className="flex flex-col gap-1.5">
-                            {/* 1. Main Weapon / Attack */}
-                            <button
-                              disabled={busy}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onTargetEnemy(enemy.id);
-                                setContextEnemy(null);
-                              }}
-                              className="w-full flex items-center gap-2 p-2 bg-gradient-to-r from-red-950/90 to-zinc-900 border border-red-600/60 hover:border-red-400 rounded-xl text-left group transition-all cursor-pointer shadow active:scale-98"
-                            >
-                              <div className="w-7 h-7 rounded-lg bg-red-900/80 border border-red-500/60 flex items-center justify-center text-red-300 shrink-0 group-hover:scale-110 transition-transform">
-                                <Swords size={14} />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="text-[11px] font-bold text-red-200 truncate">
-                                  {activeHero?.weapon || 'Atacar'}
-                                </div>
-                                <div className="text-[9px] font-mono text-red-400/80">
-                                  {activeHero?.damage || '1d8'} dano
-                                </div>
-                              </div>
-                            </button>
-
-                            {/* 2. Spell Attack (ONLY if hero is a spellcaster) */}
-                            {['Mago', 'Clérigo', 'Druida', 'Bruxo', 'Bardo', 'Feiticeiro'].includes(activeHero?.className || '') && (
-                              <button
-                                disabled={busy}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onTargetEnemy(enemy.id);
-                                  setContextEnemy(null);
-                                }}
-                                className="w-full flex items-center gap-2 p-2 bg-gradient-to-r from-purple-950/90 to-zinc-900 border border-purple-600/60 hover:border-purple-400 rounded-xl text-left group transition-all cursor-pointer shadow active:scale-98"
-                              >
-                                <div className="w-7 h-7 rounded-lg bg-purple-900/80 border border-purple-500/60 flex items-center justify-center text-purple-300 shrink-0 group-hover:scale-110 transition-transform">
-                                  <Sparkles size={14} />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="text-[11px] font-bold text-purple-200 truncate">
-                                    {activeHero?.className === 'Clérigo'
-                                      ? 'Chama Sagrada'
-                                      : activeHero?.className === 'Bruxo'
-                                      ? 'Rajada Mística'
-                                      : 'Raio de Fogo'}
-                                  </div>
-                                  <div className="text-[9px] font-mono text-purple-400/80">
-                                    {activeHero?.className === 'Clérigo' ? '1d8 radiante' : '1d10 mágico'}
-                                  </div>
-                                </div>
-                              </button>
-                            )}
-
-                            {/* 3. Inspect target */}
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onSelectToken('enemy', enemy.id);
-                                setContextEnemy(null);
-                              }}
-                              className="w-full flex items-center gap-2 p-1.5 bg-zinc-900/80 hover:bg-zinc-800 border border-zinc-700/60 hover:border-amber-500/60 rounded-xl text-left transition-all cursor-pointer"
-                            >
-                              <div className="w-6 h-6 rounded-md bg-zinc-800 flex items-center justify-center text-zinc-300 shrink-0">
-                                <Info size={12} />
-                              </div>
-                              <span className="text-[10px] font-medium text-zinc-300">
-                                Inspecionar / Focar Alvo
-                              </span>
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-
-                {/* 3. Village NPCs */}
-                {tileNpcs.map((npc) => {
-                  const dist = activeHero ? Math.max(Math.abs(activeHero.x - (npc.x ?? -1)), Math.abs(activeHero.y - (npc.y ?? -1))) : 99;
-                  const isNear = dist <= 1;
-
-                  return (
-                    <div
-                      key={npc.id}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (isNear) {
-                          onTalkNpc?.(npc.id);
-                        }
-                      }}
-                      className={`relative z-15 w-7 h-7 sm:w-9 sm:h-9 rounded-full flex flex-col items-center justify-center cursor-pointer transition-all hover:scale-105 ${
-                        isNear
-                          ? 'ring-2 ring-amber-400 ring-offset-1 ring-offset-black npc-talk-glow shadow-[0_0_18px_rgba(245,158,11,0.7)] scale-105'
-                          : 'ring-[1.5px] ring-emerald-500/70 opacity-90 shadow-md'
-                      } bg-gradient-to-br from-[#1b3320] via-[#102415] to-[#0a140c]`}
-                      title={`${npc.name} • ${npc.role}${isNear ? ' (Perto: clique para conversar)' : ' (Aproxime-se a 1,5m para conversar)'}`}
-                    >
-                      {/* Speech bubble button when player is in close proximity */}
-                      {isNear && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onTalkNpc?.(npc.id);
-                          }}
-                          className="absolute -top-7 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1 px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-400 to-yellow-300 hover:from-amber-300 hover:to-yellow-200 text-black font-black text-[8px] sm:text-[9px] shadow-[0_0_12px_rgba(245,158,11,0.9)] cursor-pointer active:scale-95 transition-all whitespace-nowrap"
-                        >
-                          <span>💬 Falar</span>
-                        </button>
-                      )}
-
-                      {/* NPC Token Icon */}
-                      <span className="text-xs sm:text-sm drop-shadow-md select-none">
-                        {npc.id === 'doran' ? '🧙' : npc.id === 'elenor' ? '🧪' : npc.id === 'kaelen' ? '🛡️' : '👤'}
-                      </span>
-
-                      {/* Mini Name Pill beneath token */}
-                      <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-zinc-950/95 border border-emerald-500/60 text-emerald-300 font-serif font-bold text-[7px] sm:text-[8px] px-1 py-0 rounded-full tracking-tight whitespace-nowrap z-20 pointer-events-none shadow">
-                        {npc.name.split(' ')[0]}
-                      </div>
-                    </div>
-                  );
-                })}
               </div>
             );
           })}
+          </div>
+
+          {/* ABSOLUTE POSITIONED TOKENS FOR SMOOTH TRANSITIONS */}
+          <div className="absolute inset-0 w-full h-full z-20 pointer-events-none">
+            <DndTokens 
+              displayHeroes={displayHeroes} 
+              enemies={enemies} 
+              npcs={npcs}
+              corpses={corpses}
+              onLootCorpse={onLootCorpse}
+              currentBiome={currentBiome}
+              gridSize={gridSize} 
+              selectedHeroId={selectedHeroId} 
+              selectedEnemyId={selectedEnemyId}
+              activeTurnId={activeTurnId}
+              targetingAction={targetingAction}
+              isCombat={isCombat}
+              activeVfx={activeVfx}
+              tokenRecoils={tokenRecoils}
+              slashVfx={slashVfx}
+              healVfx={healVfx}
+              lootSparkles={lootSparkles}
+              contextEnemy={contextEnemy}
+              setContextEnemy={setContextEnemy}
+              onSelectToken={onSelectToken}
+              onTargetEnemy={onTargetEnemy}
+              onTargetHero={onTargetHero}
+              onTargetSquare={onTargetSquare}
+              onTalkNpc={onTalkNpc}
+              onInteractPlayer={onInteractPlayer}
+              currentHeroX={currentHeroX}
+              currentHeroY={currentHeroY}
+            />
           </div>
 
           {/* FLYING COMBAT PROJECTILES OVERLAY */}

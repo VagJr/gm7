@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useCallback, useTransition } from 'react';
+import React, { useEffect, useState, useCallback, useTransition, useRef } from 'react';
 import {
   Swords,
   BookOpen,
@@ -32,7 +32,8 @@ import {
   Coffee,
   Clock,
   Crosshair,
-  MapPin
+  MapPin,
+  Crown
 } from 'lucide-react';
 import { SidebarProvider, Sidebar, SidebarContent, SidebarMenu, SidebarMenuItem, SidebarMenuButton } from '@/components/ui/sidebar';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -64,17 +65,25 @@ import {
   type Enemy,
   type WsServerMessage
 } from '@/lib/game-engine';
+
 import type { Point } from '@/lib/collision-system';
 import { GM_PROMPT } from '@/lib/gm-prompt';
-
 // New CRPG Digital Video Game Components
 import { FloatingTextOverlay, type FloatingNumber } from '@/components/game/floating-text';
 import { DiceRoller3D, type DiceRollEvent } from '@/components/game/dice-roller-3d';
 import { TopEnemyHud } from '@/components/game/top-enemy-hud';
 import { BottomPlayerHud, type ActionSelection } from '@/components/game/bottom-player-hud';
-import { TacticalMap, type ProjectileVfx } from '@/components/game/tactical-map';
+import { type ProjectileVfx } from '@/components/game/tactical-map';
+import { GameBoard as TacticalMap } from '@/components/game/game-board';
+import { getBiomeGridSize } from '@/lib/map-bounds';
 import { InventoryPanel } from '@/components/game/inventory-panel';
-import { NpcDialog, type NpcDialogData } from '@/components/game/npc-dialog';
+import { ShopModal, type ShopMerchant } from '@/components/game/shop-modal';
+import {
+  NpcDialog,
+  type NpcDialogData,
+  type NpcDialogReply,
+  type NpcDialogTurn
+} from '@/components/game/npc-dialog';
 import { ExplorationBar } from '@/components/game/exploration-bar';
 import { QuestLog } from '@/components/game/quest-log';
 import { CampaignTracker } from '@/components/game/campaign-tracker';
@@ -89,6 +98,26 @@ import { PartySidebar } from '@/components/game/party-sidebar';
 import { InitiativeRibbon } from '@/components/game/initiative-ribbon';
 import { GamemasterSidebar } from '@/components/game/gamemaster-sidebar';
 import { LevelUpModal } from '@/components/game/level-up-modal';
+import { MICRO_ADVENTURES } from '@/lib/micro-adventures';
+import { getDragonCombatPhase, executeDragonBreath } from '@/lib/dragon-encounter';
+import { playSfx } from '@/lib/sound-effects';
+import { audioManager, computeRecommendedTrack } from '@/lib/audio-manager';
+import { GameSettingsModal } from '@/components/game/game-settings-modal';
+import { MapEditorModal } from '@/components/game/map-editor-modal';
+import { AdventureGateway, type AdventureMode } from '@/components/game/dragons-gateway';
+import { BattleConsole } from '@/components/game/battle-console';
+import { projectCombat } from '@/lib/combat-instances';
+import { GameNavigation } from '@/components/game/game-navigation';
+import {
+  createDungeonExpedition,
+  generateDungeonFloor,
+  interactDungeonObject,
+  checkRoomDiscovery,
+  checkRoomCombatEncounter,
+  getDungeonObstacleCoordinates,
+  type DungeonExpeditionState,
+  type DungeonFloor
+} from '@/lib/dungeon-crawler';
 
 type ApiData = {
   error: string;
@@ -100,6 +129,8 @@ type ApiData = {
   searchHtml: string;
   choices?: string[];
   attackResult?: any;
+  activityResult?: any;
+  healResult?: any;
 };
 
 type Room = {
@@ -161,6 +192,12 @@ function createInitialRoom(): Room {
   };
 }
 
+const playCombatSound = (type: 'hit' | 'crit' | 'miss') => {
+  try {
+    playSfx(type);
+  } catch (e) {}
+};
+
 export default function Game() {
   const [view, setView] = useState('Aventura');
   const [room, setRoom] = useState<Room | null>(() => createInitialRoom());
@@ -189,6 +226,7 @@ export default function Game() {
 
   // Digital Video Game States
   const [floatingTexts, setFloatingTexts] = useState<FloatingNumber[]>([]);
+  const [hitStopType, setHitStopType] = useState<'normal' | 'crit' | null>(null);
   const [currentDiceRoll, setCurrentDiceRoll] = useState<DiceRollEvent | null>(null);
   const [targetingAction, setTargetingAction] = useState<ActionSelection | null>(null);
   const [showInventory, setShowInventory] = useState(false);
@@ -196,17 +234,19 @@ export default function Game() {
   const [showLevelUp, setShowLevelUp] = useState(false);
   const [levelUpHero, setLevelUpHero] = useState<Character | null>(null);
   const [activeNpcDialog, setActiveNpcDialog] = useState<NpcDialogData | null>(null);
-  const [aiChoices, setAiChoices] = useState<string[]>([
-    'Examinar os degraus e a névoa da abadia',
-    'Tocar no sino de bronze rúnico',
-    'Conversar com Mira, a eremita'
-  ]);
+  const [showShop, setShowShop] = useState(false);
+  const [shopMerchant, setShopMerchant] = useState<ShopMerchant | null>(null);
+  const [aiChoices, setAiChoices] = useState<string[]>([]);
   const [isJournalOpen, setIsJournalOpen] = useState(false);
 
   // New CRPG Campaign, Procedural Dungeon & Mobile States
   const [mobileTab, setMobileTab] = useState<'party' | 'map' | 'gm'>('map');
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
   const [showCharacterCreator, setShowCharacterCreator] = useState(false);
+  const creatorDismissedRef = React.useRef(false); // Guard: once user closes creator, don't re-open via load()
+  const [showWorldSelector, setShowWorldSelector] = useState(true);
+  const [gatewayBusy, setGatewayBusy] = useState(false);
+  const gatewayLock = useRef(false);
   const [interactingPlayer, setInteractingPlayer] = useState<Character | null>(null);
   const actionQueueRef = React.useRef(Promise.resolve<any>(null));
   const localMoveShieldRef = React.useRef<{ [charId: string]: { x: number; y: number; time: number } }>({});
@@ -214,17 +254,43 @@ export default function Game() {
   const wsRef = React.useRef<WebSocket | null>(null);
   const clientSeqRef = React.useRef<number>(1);
   const isWsConnectedRef = React.useRef<boolean>(false);
+  const isSseConnectedRef = React.useRef<boolean>(false);
+  const isSyncFetchingRef = React.useRef<boolean>(false);
+  const selectedRef = React.useRef<string>(selected);
+  useEffect(() => {
+    selectedRef.current = selected;
+  }, [selected]);
+  const selectedEnemyIdRef = React.useRef<string>(selectedEnemyId);
+  useEffect(() => {
+    selectedEnemyIdRef.current = selectedEnemyId;
+  }, [selectedEnemyId]);
+  const userRef = React.useRef<string>(user);
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
   const [remoteWalkPath, setRemoteWalkPath] = useState<{ characterId: string; waypoints: Point[]; seq: number } | null>(null);
-  const [showPartySidebar, setShowPartySidebar] = useState(true);
+  const [showPartySidebar, setShowPartySidebar] = useState(false);
   const [showGmSidebar, setShowGmSidebar] = useState(false);
   const [showNarrativeBox, setShowNarrativeBox] = useState(true);
   const [activeProjectiles, setActiveProjectiles] = useState<ProjectileVfx[]>([]);
+
+  // Physical token recoil, slash/heal VFX and loot sparkles
+  const [tokenRecoils, setTokenRecoils] = useState<Record<string, { dx: number; dy: number; type: 'hit' | 'crit' | 'miss' | 'heal'; timestamp: number }>>({});
+  const [slashVfx, setSlashVfx] = useState<Record<string, { timestamp: number }>>({});
+  const [healVfx, setHealVfx] = useState<Record<string, { timestamp: number }>>({});
+  const [lootSparkles, setLootSparkles] = useState<{ x: number; y: number; id: string }[]>([]);
+
   const pendingVfxRef = React.useRef<{
     projectile: ProjectileVfx;
     floatingText: FloatingNumber;
     narrateCtx: string;
+    shouldNarrate?: boolean;
+    targetId?: string;
+    attackerPos?: { x: number; y: number };
+    targetPos?: { x: number; y: number };
+    isMelee?: boolean;
   } | null>(null);
-  const [isBottomHudMinimized, setIsBottomHudMinimized] = useState(false);
+  const [isBottomHudMinimized, setIsBottomHudMinimized] = useState(true);
   const [currentAct, setCurrentAct] = useState<1 | 2 | 3>(1);
   const [dungeonSize, setDungeonSize] = useState<8 | 12 | 16>(12);
   const [dungeonSeed, setDungeonSeed] = useState<number>(() => Date.now());
@@ -237,19 +303,49 @@ export default function Game() {
     generateBattlemap('village', 12, 12345)
   );
 
-  // Sync battlemap with biome and size
-  useEffect(() => {
-    setOrganicBattlemap(
-      generateBattlemap(battlemapBiome, dungeonSize as 8 | 12 | 16, battlemapSeed)
-    );
-  }, [battlemapBiome, dungeonSize, battlemapSeed]);
+  // Estados de Configurações, Editor de Mapas e Dungeon Crawler
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isMapEditorOpen, setIsMapEditorOpen] = useState(false);
+  const [dungeonExpedition, setDungeonExpedition] = useState<DungeonExpeditionState | null>(null);
+  const [dungeonFloor, setDungeonFloor] = useState<DungeonFloor | null>(null);
+  const [showExtractionModal, setShowExtractionModal] = useState(false);
+  const [showExpeditionEntryModal, setShowExpeditionEntryModal] = useState(false);
 
-  // Sync biome from server room state
-  useEffect(() => {
-    if (room?.state?.biome && room.state.biome !== battlemapBiome) {
-      setBattlemapBiome(room.state.biome);
+  // Trigger tactile token impact recoil
+  const triggerRecoil = useCallback((
+    targetId: string,
+    attackerPos?: { x: number; y: number } | null,
+    targetPos?: { x: number; y: number } | null,
+    type: 'hit' | 'crit' | 'miss' | 'heal' = 'hit'
+  ) => {
+    let dx = 0;
+    let dy = 0;
+    if (type === 'heal') {
+      dy = -12;
+    } else if (type === 'miss') {
+      dx = (Math.random() > 0.5 ? 1 : -1) * 14;
+    } else if (attackerPos && targetPos) {
+      const angle = Math.atan2(targetPos.y - attackerPos.y, targetPos.x - attackerPos.x);
+      const force = type === 'crit' ? 24 : 14;
+      dx = Math.cos(angle) * force;
+      dy = Math.sin(angle) * force;
+    } else {
+      dx = (Math.random() - 0.5) * 18;
+      dy = (Math.random() - 0.5) * 18;
     }
-  }, [room?.state?.biome, battlemapBiome]);
+    setTokenRecoils((prev) => ({
+      ...prev,
+      [targetId]: { dx, dy, type, timestamp: Date.now() }
+    }));
+    setTimeout(() => {
+      setTokenRecoils((prev) => {
+        const next = { ...prev };
+        delete next[targetId];
+        return next;
+      });
+    }, 450);
+  }, []);
+
 
   // Escape key listener to exit targeting mode
   useEffect(() => {
@@ -272,40 +368,90 @@ export default function Game() {
   // Shield local optimistic coordinates against stale network rollbacks
   const applyProtectedRoomState = useCallback((newRoom: Room) => {
     setRoom((prev) => {
-      if (!prev) return newRoom;
-      if (newRoom.version < prev.version) return prev; // Do not apply older snapshot
+      if (!prev || prev.id !== newRoom.id) {
+        localMoveShieldRef.current = {};
+        roomRef.current = newRoom;
+        return newRoom;
+      }
+      if (newRoom.version < prev.version) return prev;
 
       const now = Date.now();
-      const protectedChars = (newRoom.state?.characters || []).map((char: Character) => {
+      const incomingChars: Character[] = newRoom.state?.characters || [];
+      const prevChars = prev.state?.characters || [];
+
+      // Authoritative active character list from server, protected against optimistic rollback
+      // for the local player's recent movements (2500ms safety window for Render latency)
+      const activeCharIds = new Set(incomingChars.map((c) => c.id));
+      const protectedChars = incomingChars.map((char: Character) => {
         const shield = localMoveShieldRef.current[char.id];
-        if (shield && now - shield.time < 2000) {
-          if (char.x === shield.x && char.y === shield.y) {
-            delete localMoveShieldRef.current[char.id];
-          } else {
+        if (shield) {
+          if (now - shield.time < 2500) {
             return { ...char, x: shield.x, y: shield.y };
+          } else {
+            delete localMoveShieldRef.current[char.id];
           }
         }
         return char;
       });
 
-      const safeRoom: Room = {
+      // Preserve newly created / optimistic hero locally only if currently under an active rollback shield
+      for (const c of prevChars) {
+        if (!activeCharIds.has(c.id)) {
+          const shield = localMoveShieldRef.current[c.id];
+          if (shield && now - shield.time < 2500) {
+            protectedChars.push({ ...c, x: shield.x, y: shield.y });
+          }
+        }
+      }
+
+      // Authoritative enemy sync:
+      // Scope enemies strictly to current player/party biome without blanket village wiping in MMO
+      const isMmo = newRoom.id === 'mmo-world-village';
+      const curHero = protectedChars.find((c) => c.id === selectedRef.current);
+      const heroBiome = curHero?.biome || (isMmo ? 'village' : (newRoom.state?.biome || 'village'));
+      let authoritativeEnemies = (newRoom.state?.enemies || []).filter((e) => {
+        if (heroBiome === 'village') return false;
+        if (e.biome && e.biome !== heroBiome) return false;
+        if (curHero?.partyId && e.partyId && e.partyId !== curHero.partyId) return false;
+        if (!curHero?.partyId && e.ownerCharId && e.ownerCharId !== curHero?.id) return false;
+        return true;
+      });
+
+      // Clear selected enemy if no longer in battle
+      const curEnemyId = selectedEnemyIdRef.current;
+      if (curEnemyId && !authoritativeEnemies.some((e) => e.id === curEnemyId)) {
+        setSelectedEnemyId('');
+      }
+
+      const protectedRoom: Room = {
         ...newRoom,
+        version: Math.max(prev.version, newRoom.version),
         state: {
+          ...prev.state,
           ...newRoom.state,
-          characters: protectedChars
+          characters: protectedChars,
+          enemies: newRoom.state.enemies || []
         }
       };
-      roomRef.current = safeRoom;
-      return safeRoom;
+      roomRef.current = protectedRoom;
+      return protectedRoom;
     });
   }, []);
 
   // Data Loading
   const load = useCallback(async (id?: string) => {
     try {
-      const r = await fetch('/api/game' + (id ? '?room=' + encodeURIComponent(id) : ''));
+      const storedRoom = typeof window !== 'undefined' ? localStorage.getItem('last_active_room_id') : null;
+      const targetRoomId = id || roomRef.current?.id || storedRoom || 'mmo-world-village';
+      const r = await fetch('/api/game?room=' + encodeURIComponent(targetRoomId), {cache:'no-store'});
       const d = (await r.json()) as ApiData;
-      if (!r.ok) throw Error(d.error);
+      if (!r.ok) {
+        if (id) {
+          console.warn(`Mesa ${id} temporariamente indisponível (${d.error}), mantendo mesa ativa.`);
+          return d;
+        }
+        throw Error(d.error);
+      }
       if (!d.signedIn) {
         if (typeof window !== 'undefined') {
           window.location.href = '/signin-with-chatgpt?return_to=' + encodeURIComponent(window.location.pathname);
@@ -316,37 +462,56 @@ export default function Game() {
       setUser(d.user || '');
       if (d.rooms && d.rooms.length > 0) setRooms(d.rooms);
       if (d.room) {
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('last_active_room_id', d.room.id);
+        }
         applyProtectedRoomState(d.room);
+
         const heroes = d.room.state.characters || [];
         const isMmo = d.room.id === 'mmo-world-village';
         const myHeroes = heroes.filter((c: Character) => isMmo ? c.owner === d.user : (!c.owner || c.owner === d.user));
+
+        // ── Sync currentAct from hero progression in MMO or server room state ──
+        const activeHeroAct = myHeroes[0]?.act;
+        const serverAct = isMmo ? (activeHeroAct || d.room.state.act || 1) : (d.room.state.act || (d.room.state.location + 1));
+        if ([1, 2, 3].includes(serverAct)) {
+          setCurrentAct(serverAct as 1 | 2 | 3);
+        }
         setSelected((p) => {
-          if (p && heroes.some((c: Character) => c.id === p && (isMmo ? c.owner === d.user : true))) {
+          if (p && myHeroes.some((c: Character) => c.id === p)) {
             return p;
           }
-          return myHeroes[0]?.id || heroes[0]?.id || '';
+          return myHeroes[0]?.id || (!isMmo ? heroes[0]?.id : '') || '';
         });
         setSelectedEnemyId((e) =>
           d.room.state.enemies.some((en: Enemy) => en.id === e)
             ? e
             : d.room.state.enemies[0]?.id || ''
         );
-        if (heroes.length === 0 || (isMmo && myHeroes.length === 0)) {
-          setShowCharacterCreator(true);
-        } else if (isMmo && myHeroes.length >= 1) {
+        // Only show character creator if user has NO heroes AND hasn't dismissed it this session
+        if ((heroes.length === 0 || (isMmo && myHeroes.length === 0)) && !creatorDismissedRef.current) {
+          setShowWorldSelector(true); // Show world selector first, then creator
+        }
+        // Never re-open creator if user already has heroes
+        if (myHeroes.length > 0) {
           setShowCharacterCreator(false);
         }
       }
       return d;
     } catch (e) {
       console.warn('Sync notice:', e);
+      return null;
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [applyProtectedRoomState]);
 
+  const bootstrapStartedRef = useRef(false);
   useEffect(() => {
-    void load();
+    if(bootstrapStartedRef.current) return;
+    bootstrapStartedRef.current=true;
+    const initialRoom = (typeof window !== 'undefined' && localStorage.getItem('last_active_room_id')) || 'mmo-world-village';
+    void load(initialRoom);
   }, [load]);
 
   // Handle wipe URL parameter detection
@@ -354,7 +519,8 @@ export default function Game() {
     if (typeof window !== 'undefined') {
       const url = new URL(window.location.href);
       if (url.searchParams.get('wiped') === '1') {
-        setShowCharacterCreator(true);
+        creatorDismissedRef.current = false;
+        setShowWorldSelector(true);
         url.searchParams.delete('wiped');
         window.history.replaceState({}, '', url.pathname + (url.search ? url.search : ''));
       }
@@ -370,6 +536,7 @@ export default function Game() {
     let ws: WebSocket | null = null;
     let reconnectTimeout: NodeJS.Timeout | null = null;
     let fallbackPollingTimer: NodeJS.Timeout | null = null;
+    let pingInterval: NodeJS.Timeout | null = null;
     let bc: BroadcastChannel | null = null;
     let isDisposed = false;
 
@@ -405,7 +572,95 @@ export default function Game() {
       // BroadcastChannel fallback
     }
 
-    // 2. Cloudflare Native WebSocket + Durable Objects Transport
+    // 2. Fallback Polling Loop (Sub-second 400ms when disconnected from Push)
+    const ensureFallbackPolling = () => {
+      if (isDisposed || fallbackPollingTimer) return;
+      fallbackPollingTimer = setInterval(() => {
+        if (!document.hidden && !isDisposed && !isSyncFetchingRef.current && !isWsConnectedRef.current && !isSseConnectedRef.current) {
+          isSyncFetchingRef.current = true;
+          void load(roomId).finally(() => {
+            isSyncFetchingRef.current = false;
+          });
+        }
+      }, 2000);
+    };
+
+    // 3. Server-Sent Events (SSE) Push Transport (100% Cloud-Host Resilient Real-Time Push)
+    let es: EventSource | null = null;
+    let sseReconnectTimeout: NodeJS.Timeout | null = null;
+
+    const connectSse = () => {
+      if (isDisposed) return;
+      try {
+        const myCharId = selectedRef.current || '';
+        const myUserId = userRef.current || '';
+        const sseUrl = `/api/game/stream?room=${encodeURIComponent(roomId)}${myUserId ? `&userId=${encodeURIComponent(myUserId)}` : ''}${myCharId ? `&characterId=${encodeURIComponent(myCharId)}` : ''}`;
+        es = new EventSource(sseUrl);
+
+        es.onopen = () => {
+          if (isDisposed) {
+            es?.close();
+            return;
+          }
+          isSseConnectedRef.current = true;
+          if (fallbackPollingTimer) {
+            clearInterval(fallbackPollingTimer);
+            fallbackPollingTimer = null;
+          }
+        };
+
+        es.addEventListener('update', (event) => {
+          if (isDisposed) return;
+          try {
+            const data = JSON.parse(event.data);
+            // 1. Smooth remote hero walk interpolation
+            if (data.actionType === 'move' && data.actionPayload?.characterId) {
+              const payload = data.actionPayload;
+              if (payload.characterId !== selected) {
+                setRemoteWalkPath({
+                  characterId: payload.characterId,
+                  waypoints: payload.waypoints || [{ x: payload.x, y: payload.y }],
+                  seq: payload.seq || ++clientSeqRef.current
+                });
+              }
+            }
+
+            // 2. Authoritative protected state sync
+            if (data.state) {
+              const snapRoom: Room = {
+                id: roomId,
+                owner: roomRef.current?.owner || '',
+                name: roomRef.current?.name || '',
+                code: roomRef.current?.code || '',
+                version: data.version,
+                state: data.state
+              };
+              applyProtectedRoomState(snapRoom);
+            }
+          } catch (err) {
+            console.warn('SSE payload notice:', err);
+          }
+        });
+
+        es.onerror = () => {
+          isSseConnectedRef.current = false;
+          es?.close();
+          es = null;
+          if (isDisposed) return;
+          if (!isWsConnectedRef.current) {
+            ensureFallbackPolling();
+          }
+          if (sseReconnectTimeout) clearTimeout(sseReconnectTimeout);
+          sseReconnectTimeout = setTimeout(connectSse, 2500);
+        };
+      } catch (err) {
+        console.warn('SSE stream init notice:', err);
+      }
+    };
+
+    connectSse();
+
+    // 4. Cloudflare Native WebSocket + Durable Objects Transport
     const connectWs = () => {
       if (isDisposed) return;
       try {
@@ -426,6 +681,14 @@ export default function Game() {
             fallbackPollingTimer = null;
           }
 
+          // Start 15s keep-alive heartbeat ping
+          if (pingInterval) clearInterval(pingInterval);
+          pingInterval = setInterval(() => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: 'PING', timestamp: Date.now() }));
+            }
+          }, 15000);
+
           ws?.send(
             JSON.stringify({
               type: 'JOIN_ROOM',
@@ -434,6 +697,19 @@ export default function Game() {
               characterId: selected
             })
           );
+
+          // If hero is already selected in current room state, announce presence immediately
+          const activeHero = roomRef.current?.state?.characters?.find((c) => c.id === selected);
+          if (activeHero) {
+            ws?.send(
+              JSON.stringify({
+                type: 'PLAYER_JOIN',
+                roomId,
+                userId: user || 'anon',
+                character: activeHero
+              })
+            );
+          }
         };
 
         ws.onmessage = (event) => {
@@ -455,7 +731,54 @@ export default function Game() {
                 break;
               }
 
+              case 'PLAYER_JOINED': {
+                // Immediately spawn the joined hero in local state without page refresh
+                setRoom((prev) => {
+                  if (!prev) return prev;
+                  const charById = new Map<string, Character>();
+                  for (const c of prev.state.characters) charById.set(c.id, c);
+                  charById.set(msg.character.id, msg.character);
+                  const updatedRoom: Room = {
+                    ...prev,
+                    version: Math.max(prev.version, msg.version),
+                    state: {
+                      ...prev.state,
+                      characters: Array.from(charById.values())
+                    }
+                  };
+                  roomRef.current = updatedRoom;
+                  return updatedRoom;
+                });
+                break;
+              }
+
+              case 'PLAYER_LEFT': {
+                // Immediately despawn the disconnected/left hero
+                setRoom((prev) => {
+                  if (!prev) return prev;
+                  const updatedRoom: Room = {
+                    ...prev,
+                    version: Math.max(prev.version, msg.version),
+                    state: {
+                      ...prev.state,
+                      characters: prev.state.characters.filter((c) => c.id !== msg.characterId)
+                    }
+                  };
+                  roomRef.current = updatedRoom;
+                  return updatedRoom;
+                });
+                break;
+              }
+
               case 'HERO_MOVED': {
+                // If this is the local hero and optimistic shield is active, ignore remote echo to prevent rollback on Render
+                const isLocalHero = msg.characterId === selectedRef.current;
+                const shield = localMoveShieldRef.current[msg.characterId];
+                const now = Date.now();
+                if (isLocalHero && shield && now - shield.time < 2500) {
+                  break;
+                }
+
                 // Trigger smooth 340ms waypoint walking animation with token sway
                 setRemoteWalkPath({
                   characterId: msg.characterId,
@@ -465,9 +788,16 @@ export default function Game() {
 
                 setRoom((prev) => {
                   if (!prev) return prev;
+                  // Se o personagem não existe no nosso estado, isso significa que perdemos um SYNC_SNAPSHOT.
+                  // Precisamos forçar o carregamento do banco de dados para puxar sua ficha completa.
+                  if (!prev.state.characters.some(c => c.id === msg.characterId)) {
+                    void load(roomId);
+                    return prev;
+                  }
+                  
                   return {
                     ...prev,
-                    version: Math.max(prev.version, msg.seq),
+                    version: prev.version,
                     state: {
                       ...prev.state,
                       characters: prev.state.characters.map((c) =>
@@ -481,19 +811,21 @@ export default function Game() {
 
               case 'MOVE_REJECTED': {
                 setError(msg.reason || 'Movimento rejeitado pelo servidor.');
-                // Revert to server-authoritative original position
-                setRoom((prev) => {
-                  if (!prev) return prev;
-                  return {
-                    ...prev,
-                    state: {
-                      ...prev.state,
-                      characters: prev.state.characters.map((c) =>
-                        c.id === msg.characterId ? { ...c, x: msg.originalPos.x, y: msg.originalPos.y } : c
-                      )
-                    }
-                  };
-                });
+                // Revert to server-authoritative original position only if valid non-zero
+                if (msg.originalPos && (msg.originalPos.x > 0 || msg.originalPos.y > 0)) {
+                  setRoom((prev) => {
+                    if (!prev) return prev;
+                    return {
+                      ...prev,
+                      state: {
+                        ...prev.state,
+                        characters: prev.state.characters.map((c) =>
+                          c.id === msg.characterId ? { ...c, x: msg.originalPos.x, y: msg.originalPos.y } : c
+                        )
+                      }
+                    };
+                  });
+                }
                 break;
               }
 
@@ -519,7 +851,7 @@ export default function Game() {
                   msg.state.characters.find((c) => c.id === msg.targetId) ||
                   msg.state.enemies.find((e) => e.id === msg.targetId);
                 if (target) {
-                  const curGrid = battlemapBiome === 'village' ? 8 : dungeonSize;
+                  const curGrid = dungeonFloor ? dungeonFloor.width : getBiomeGridSize(battlemapBiome);
                   const posX = ((target.x + 0.5) / curGrid) * 100;
                   const posY = ((target.y + 0.5) / curGrid) * 100;
                   const newFloat: FloatingNumber = {
@@ -532,6 +864,38 @@ export default function Game() {
                     type: msg.attackResult.isCrit ? 'crit' : msg.attackResult.hit ? 'damage' : 'miss'
                   };
                   setFloatingTexts((prev) => [...prev, newFloat]);
+                  
+                  if (newFloat.type === 'crit' || newFloat.type === 'damage') {
+                    setHitStopType(newFloat.type === 'crit' ? 'crit' : 'normal');
+                    playCombatSound(newFloat.type === 'crit' ? 'crit' : 'hit');
+                    setTimeout(() => setHitStopType(null), newFloat.type === 'crit' ? 300 : 150);
+                  } else if (newFloat.type === 'miss') {
+                    playCombatSound('miss');
+                  }
+
+                  // Trigger physical recoil & directional slash
+                  const recoilType = msg.attackResult.isCrit ? 'crit' : msg.attackResult.hit ? 'hit' : 'miss';
+                  const attacker = msg.state.characters.find((c: any) => c.id === msg.actorId) ||
+                                   msg.state.enemies.find((e: any) => e.id === msg.actorId);
+                  triggerRecoil(
+                    msg.targetId,
+                    attacker ? { x: attacker.x, y: attacker.y } : null,
+                    { x: target.x, y: target.y },
+                    recoilType
+                  );
+
+                  // Slash sweep effect for melee attacks
+                  if (msg.attackResult.hit && (!msg.projectile || (attacker && Math.hypot(target.x - attacker.x, target.y - attacker.y) <= 1.5))) {
+                    setSlashVfx((prev) => ({ ...prev, [msg.targetId]: { timestamp: Date.now() } }));
+                    setTimeout(() => {
+                      setSlashVfx((prev) => {
+                        const next = { ...prev };
+                        delete next[msg.targetId];
+                        return next;
+                      });
+                    }, 400);
+                  }
+
                   setTimeout(() => {
                     setFloatingTexts((prev) => prev.filter((f) => f.id !== newFloat.id));
                   }, 1600);
@@ -579,14 +943,14 @@ export default function Game() {
 
         ws.onclose = () => {
           isWsConnectedRef.current = false;
-          if (isDisposed) return;
-          // If WS disconnected, temporarily poll while reconnecting
-          if (!fallbackPollingTimer) {
-            fallbackPollingTimer = setInterval(() => {
-              if (!busy) void load(roomId);
-            }, 3000);
+          if (pingInterval) {
+            clearInterval(pingInterval);
+            pingInterval = null;
           }
-          // Exponential / delayed reconnection
+          if (isDisposed) return;
+          if (!isSseConnectedRef.current) {
+            ensureFallbackPolling();
+          }
           reconnectTimeout = setTimeout(connectWs, 2000);
         };
 
@@ -598,12 +962,18 @@ export default function Game() {
       }
     };
 
-    connectWs();
+    // POLISH_B_WS_DISABLED: authenticated SSE is the realtime authority.
+    // Native WS stays disabled until it has a server-validated session handshake.
 
     return () => {
       isDisposed = true;
+      if (pingInterval) clearInterval(pingInterval);
       if (reconnectTimeout) clearTimeout(reconnectTimeout);
+      if (sseReconnectTimeout) clearTimeout(sseReconnectTimeout);
       if (fallbackPollingTimer) clearInterval(fallbackPollingTimer);
+      if (es) {
+        es.close();
+      }
       if (ws) {
         ws.close();
         if (wsRef.current === ws) wsRef.current = null;
@@ -615,24 +985,50 @@ export default function Game() {
         }
       }
     };
-  }, [room?.id, applyProtectedRoomState, busy, load, user, selected, battlemapBiome, dungeonSize]);
+  }, [room?.id, applyProtectedRoomState, load, user, selected, battlemapBiome, dungeonSize]);
+
+  // Synchronize active hero selection with room WebSocket so all other players immediately see this avatar
+  useEffect(() => {
+    if (!selected || !room?.id) return;
+    const hero = room.state?.characters?.find((c) => c.id === selected);
+    if (hero && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(
+        JSON.stringify({
+          type: 'PLAYER_JOIN',
+          roomId: room.id,
+          userId: user || 'anon',
+          character: hero
+        })
+      );
+    }
+  }, [selected, room?.id, user, room?.state?.characters]);
 
   // General server action dispatch with queue to eliminate lag and prevent dropping fast clicks
-  async function action(a: Record<string, unknown>) {
+  async function action(a: Record<string, unknown>): Promise<ApiData | null> {
     setError('');
-    const task = actionQueueRef.current.then(async () => {
+    const task: Promise<ApiData | null> = actionQueueRef.current.then(async (): Promise<ApiData | null> => {
       setBusy(true);
       try {
-        const curRoom = roomRef.current;
-        const r = await fetch('/api/game', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ room: curRoom?.id, version: curRoom?.version, ...a })
-        });
-        const d = (await r.json()) as ApiData;
-        if (!r.ok) {
-          if (r.status === 409) await load(curRoom?.id);
-          throw Error(d.error);
+        let curRoom = roomRef.current;
+        let d = {} as ApiData;
+        for (let attempt = 0; attempt < 2; attempt++) {
+          const r = await fetch('/api/game', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ room: curRoom?.id, version: curRoom?.version, ...a })
+          });
+          const rawText = await r.text();
+          try { d = rawText ? (JSON.parse(rawText) as ApiData) : ({} as ApiData); }
+          catch { throw new Error(rawText?.slice(0, 120) || `Falha de rede (${r.status})`); }
+          if(d.user) setUser(d.user);
+          if (r.status === 409) {
+            // A conflict means the server did not commit this action. Rebase
+            // once on its latest snapshot, inside the same serialized queue.
+            if (d.room) applyProtectedRoomState(d.room); else await load(curRoom?.id);
+            curRoom = d.room || roomRef.current;
+            if (attempt === 0) continue;
+          }
+          if (!r.ok) throw Error(d.error || 'Erro ao sincronizar com a mesa.');
+          break;
         }
         if (d.room) {
           applyProtectedRoomState(d.room);
@@ -642,6 +1038,11 @@ export default function Game() {
               room: d.room
             });
           } catch {}
+
+          // Fix: Trigger MMO WebSocket Force Sync immediately after REST mutation
+          if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+            wsRef.current.send(JSON.stringify({ type: 'FORCE_SYNC' }));
+          }
         } else {
           await load(d.id || curRoom?.id);
         }
@@ -649,6 +1050,7 @@ export default function Game() {
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Não foi possível salvar.');
         if (a.action === 'move') {
+          if(typeof a.character==='string') delete localMoveShieldRef.current[a.character];
           void load(roomRef.current?.id);
         }
         return null;
@@ -684,32 +1086,278 @@ export default function Game() {
       const d = (await r.json()) as ApiData;
       if (!r.ok) throw Error(d.error);
       setSearchHtml(d.searchHtml || '');
-      if (d.choices && d.choices.length > 0) {
-        setAiChoices(d.choices);
-      }
+      setAiChoices([]);
       if (!customText) setMessage('');
       await load(curRoom?.id);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'A GM não respondeu.');
+      console.warn('Narração offline/aviso:', e);
       await load(roomRef.current?.id);
     } finally {
       setBusy(false);
     }
   }
 
-  const state = room?.state;
+  const viewHero = room?.state.characters.find(c=>c.id===selected && (c.owner===user || room.owner===user)) || room?.state.characters.find(c=>c.owner===user);
+  const state = room?.state ? projectCombat(room.state,viewHero) : undefined;
   const owner = room?.owner === user;
-  const active = state?.characters.find((c) => c.id === selected) || state?.characters[0];
-  const location = (locations && locations[state?.location || 0]) || locations[0];
+  const isMmoRoom = room?.id === 'mmo-world-village';
+  const myHeroes = (state?.characters || []).filter((c) => isMmoRoom ? c.owner === user : (!c.owner || c.owner === user));
+  const active = (state?.characters || []).find((c) => c.id === selected && (isMmoRoom ? c.owner === user : true))
+    || myHeroes[0]
+    || (!isMmoRoom && owner ? (state?.characters || [])[0] : undefined);
+
+  // POLISH_B_RESTORE_DUNGEON_ACTIVITY
+  useEffect(() => {
+    if (!active || !state?.activities) return;
+
+    const preferred =
+      active.activeActivityId
+        ? state.activities[
+            active.activeActivityId
+          ]
+        : undefined;
+
+    const activity =
+      preferred?.type === 'dungeon'
+        ? preferred
+        : Object.values(
+            state.activities
+          ).find(
+            (candidate) =>
+              candidate.type ===
+                'dungeon' &&
+              candidate.status ===
+                'active' &&
+              candidate.scopeKey ===
+                (
+                  active.partyId
+                    ? 'party:' +
+                      active.partyId
+                    : 'hero:' +
+                      active.id
+                )
+          );
+
+    if (
+      !activity ||
+      !activity.payload
+    ) {
+      return;
+    }
+
+    const expedition =
+      activity.payload as unknown as DungeonExpeditionState;
+
+    if (
+      !expedition.floorHistory ||
+      !expedition.currentFloor
+    ) {
+      return;
+    }
+
+    const floor =
+      expedition.floorHistory[
+        expedition.currentFloor
+      ];
+
+    if (!floor) {
+      return;
+    }
+
+    setDungeonExpedition(
+      expedition
+    );
+
+    setDungeonFloor(
+      floor
+    );
+
+    setDungeonSize(12);
+  }, [
+    active?.id,
+    active?.partyId,
+    active?.activeActivityId,
+    state?.activities
+  ]);
+  const canReturnToPartyBattle = Boolean(
+    isMmoRoom &&
+    active &&
+    active.hp > 0 &&
+    active.partyId &&
+    state?.combat &&
+    state.combatPartyId === active.partyId &&
+    !(state.order || []).includes(active.id) &&
+    (state.characters || []).some(
+      (char) =>
+        char.id !== active.id &&
+        char.partyId === active.partyId &&
+        char.hp > 0 &&
+        (state.order || []).includes(char.id)
+    )
+  );
+
+  const activeLocIdx = active?.location ?? state?.location ?? 0;
+  const location = (locations && locations[activeLocIdx]) || locations[0];
   const canEdit = active && (owner || active.owner === user);
   const turnId = state?.order[state.turn];
   const turnEntity = [...(state?.characters || []), ...(state?.enemies || [])].find((c) => c.id === turnId);
   const isHeroTurn = active && turnId === active.id;
   const isActBossDefeated = state?.enemies ? state.enemies.length > 0 && state.enemies.every((e) => e.hp <= 0) : false;
-  const isMmoRoom = room?.id === 'mmo-world-village';
-  const myHeroes = (state?.characters || []).filter((c) => isMmoRoom ? c.owner === user : (!c.owner || c.owner === user));
-  const currentEnemy = state?.enemies?.find((e) => e.id === selectedEnemyId) || state?.enemies?.[0] || null;
+  const curHeroBiome = active?.biome || (isMmoRoom ? 'village' : (state?.biome || 'village'));
+  const isHeroInVillage = curHeroBiome === 'village' || activeLocIdx === 0;
+  const isHeroInCombat = !isHeroInVillage && Boolean(state?.combat && (state.order?.includes(active?.id || '') || !isMmoRoom));
+  const livingEnemies = isHeroInVillage ? [] : (state?.enemies ? state.enemies.filter((e) => {
+    if (e.hp <= 0) return false;
+    const enemyBiome = e.biome || 'forest';
+    if (enemyBiome !== curHeroBiome) return false;
+    if (active?.partyId) return e.partyId === active.partyId || (!e.partyId && !e.ownerCharId);
+    return (!e.partyId || e.partyId === active?.id) && (!e.ownerCharId || e.ownerCharId === active?.id);
+  }) : []);
+  const currentEnemy = livingEnemies.find((e) => e.id === selectedEnemyId) || livingEnemies[0] || null;
   const latestGmLog = state?.logs ? [...state.logs].reverse().find((l) => l.kind === 'gm') : null;
+
+  // Update biome reactively from active hero (supports individual/party biome traveling in MMO)
+  useEffect(() => {
+    const isMmo = room?.id === 'mmo-world-village';
+    const targetBiome = isMmo ? (active?.biome || 'village') : (active?.biome || room?.state?.biome || 'village');
+    if (targetBiome && targetBiome !== battlemapBiome) {
+      setBattlemapBiome(targetBiome);
+      setBattlemapSeed(Date.now());
+    }
+  }, [active?.biome, room?.state?.biome, room?.id, battlemapBiome]);
+
+  // Update act reactively from active hero or room
+  useEffect(() => {
+    const targetAct = active?.act || room?.state?.act;
+    if (targetAct && targetAct !== currentAct && (targetAct === 1 || targetAct === 2 || targetAct === 3)) {
+      setCurrentAct(targetAct as 1 | 2 | 3);
+    }
+  }, [active?.act, room?.state?.act, currentAct]);
+
+  // Background Music Controller: Toca em loop a faixa correspondente (cidades, batalha_media, batalha_alta)
+  useEffect(() => {
+    const isCombat = Boolean(state?.combat);
+    const recommended = computeRecommendedTrack({
+      combat: isCombat,
+      enemies: state?.enemies,
+      isDragonCombatActive: Boolean(isActBossDefeated && currentAct === 3),
+      activeAct: currentAct
+    });
+  }, [state?.combat, state?.enemies, isActBossDefeated, currentAct]);
+
+  // Monitorar fim de combate na Masmorra Procedural (desbloqueio de escadaria e salas limpas)
+  const prevCombatRef = useRef(false);
+  useEffect(() => {
+    const wasCombat = prevCombatRef.current;
+    const isCombat = Boolean(state?.combat);
+    prevCombatRef.current = isCombat;
+
+    if (wasCombat && !isCombat && dungeonFloor && dungeonExpedition) {
+      // Verificar se o chefe da sala foi derrotado
+      const bossRoom = dungeonFloor.rooms.find((r) => r.purpose === 'boss');
+      const bossEnemy = bossRoom?.enemies[0];
+      const bossDefeatedOnServer = bossEnemy
+        ? !(state?.enemies || []).some((e) => e.id === bossEnemy.id && e.hp > 0)
+        : false;
+
+      if (bossRoom && (bossDefeatedOnServer || bossRoom.cleared)) {
+        bossRoom.cleared = true;
+        dungeonFloor.cleared = true;
+        dungeonFloor.stairsDown.isUnlocked = true;
+
+        try { playSfx('levelup'); } catch {}
+        void narrate(
+          '',
+          `🏆 [Vitória no Andar ${dungeonFloor.floorNumber}] O Guardião do Andar foi Derrotado! A Escadaria das Profundezas foi Aberta!`
+        );
+        setShowExtractionModal(true);
+      } else {
+        for (const room of dungeonFloor.rooms) {
+          if (!room.cleared && room.purpose === 'combat') {
+            const hasAlive = room.enemies.some((re) =>
+              (state?.enemies || []).some((se) => se.id === re.id && se.hp > 0)
+            );
+            if (!hasAlive) {
+              room.cleared = true;
+              void narrate('', `⚔️ ${room.name}: As sentinelas foram derrotadas! Sala segura.`);
+            }
+          }
+        }
+      }
+    }
+  }, [state?.combat, state?.enemies, dungeonFloor, dungeonExpedition]);
+
+  // Auto-focus user's active hero or current combat turn entity to eliminate requiring preliminary manual clicks
+  useEffect(() => {
+    if (!state) return;
+    if (state.combat && state.order && state.turn !== undefined) {
+      const currentTurnId = state.order[state.turn];
+      const isMyTurn = myHeroes.some((h) => h.id === currentTurnId);
+      if (isMyTurn && selected !== currentTurnId) {
+        setSelected(currentTurnId);
+        return;
+      }
+    }
+    if (myHeroes.length > 0) {
+      const isCurrentSelectedMine = myHeroes.some((h) => h.id === selected);
+      if (!isCurrentSelectedMine) {
+        setSelected(myHeroes[0].id);
+      }
+    }
+  }, [state?.combat, state?.turn, state?.order, myHeroes, selected]);
+
+  // Clean multiplayer disconnect on window close / navigation
+  useEffect(() => {
+    const handleUnload = () => {
+      const curRoom = roomRef.current;
+      const curUser = userRef.current;
+      if (curRoom?.id === 'mmo-world-village' && curUser) {
+        const charToLeave = selectedRef.current;
+        const payload = JSON.stringify({
+          room: curRoom.id,
+          action: 'leave',
+          character: charToLeave
+        });
+        if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
+          navigator.sendBeacon('/api/game', new Blob([payload], { type: 'application/json' }));
+        } else {
+          fetch('/api/game', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: payload,
+            keepalive: true
+          }).catch(() => {});
+        }
+      }
+    };
+
+    window.addEventListener('beforeunload', handleUnload);
+    window.addEventListener('pagehide', handleUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleUnload);
+      window.removeEventListener('pagehide', handleUnload);
+    };
+  }, []);
+
+  // Periodic MMO heartbeat (every 25s) to refresh lastSeen
+  useEffect(() => {
+    if (room?.id !== 'mmo-world-village') return;
+    const interval = setInterval(() => {
+      const curChar = selectedRef.current;
+      if (curChar && !document.hidden) {
+        fetch('/api/game', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            room: 'mmo-world-village',
+            action: 'heartbeat',
+            character: curChar
+          })
+        }).catch(() => {});
+      }
+    }, 25000);
+    return () => clearInterval(interval);
+  }, [room?.id]);
 
   // Memoized 3D dice dismissal — fires pending VFX AFTER dice disappears
   const handleDiceComplete = useCallback(() => {
@@ -729,36 +1377,261 @@ export default function Game() {
       // Show floating combat text after a tiny delay (impact moment)
       setTimeout(() => {
         setFloatingTexts((prev) => [...prev, pending.floatingText]);
+        
+        if (pending.floatingText.type === 'crit' || pending.floatingText.type === 'damage') {
+          setHitStopType(pending.floatingText.type === 'crit' ? 'crit' : 'normal');
+          playCombatSound(pending.floatingText.type === 'crit' ? 'crit' : 'hit');
+          setTimeout(() => setHitStopType(null), pending.floatingText.type === 'crit' ? 300 : 150);
+        } else if (pending.floatingText.type === 'miss') {
+          playCombatSound('miss');
+        }
+
+        // Trigger physical token recoil & directional slash
+        if (pending.targetId) {
+          const recoilType = pending.floatingText.type === 'crit' ? 'crit' : pending.floatingText.type === 'damage' ? 'hit' : 'miss';
+          triggerRecoil(
+            pending.targetId,
+            pending.attackerPos,
+            pending.targetPos,
+            recoilType
+          );
+
+          if (pending.isMelee && pending.floatingText.type !== 'miss') {
+            setSlashVfx((prev) => ({ ...prev, [pending.targetId!]: { timestamp: Date.now() } }));
+            setTimeout(() => {
+              setSlashVfx((prev) => {
+                const next = { ...prev };
+                delete next[pending.targetId!];
+                return next;
+              });
+            }, 400);
+          }
+        }
+
         setTimeout(() => {
           setFloatingTexts((prev) => prev.filter((f) => f.id !== pending.floatingText.id));
         }, 1600);
       }, 300);
 
-      // Narrate the cinematic outcome
-      void narrate('', pending.narrateCtx);
+      // Narrate ONLY on critical hits or lethal boss/elite kills (selective AI director)
+      if (pending.shouldNarrate && pending.narrateCtx) {
+        void narrate('', pending.narrateCtx);
+      }
     }
-  }, []);
+  }, [triggerRecoil, narrate]);
 
-  // Complete Cache & Account Wipe Handler
+  // Start a separate campaign while preserving existing saves.
   const handleWipeAllData = async () => {
-    if (typeof window !== 'undefined') {
-      const confirmed = window.confirm(
-        'Tem certeza que deseja apagar os saves antigos, limpar o cache e iniciar uma nova campanha na Vila do Rio Verde?'
-      );
-      if (!confirmed) return;
-      try {
-        localStorage.clear();
-        sessionStorage.clear();
-      } catch {}
-      window.location.href = '/api/wipe';
+    setShowWorldSelector(true);
+  };
+
+  const handleExecuteSupportSpell = async (
+    targetId: string
+  ) => {
+    if (
+      busy ||
+      !active ||
+      !state ||
+      !targetingAction ||
+      targetingAction.category !==
+        'spell'
+    ) {
+      return;
     }
+
+    const target =
+      state.characters.find(
+        (character) =>
+          character.id ===
+          targetId
+      );
+
+    if (!target) {
+      return;
+    }
+
+    const selectedSpell =
+      targetingAction;
+
+    const distance =
+      Math.max(
+        Math.abs(
+          active.x -
+          target.x
+        ),
+        Math.abs(
+          active.y -
+          target.y
+        )
+      );
+
+    if (
+      distance >
+      selectedSpell.rangeSquares
+    ) {
+      setError(
+        'Alvo fora do alcance de ' +
+          selectedSpell.name +
+          '.'
+      );
+
+      return;
+    }
+
+    const result =
+      await action({
+        action: 'spell',
+        character: active.id,
+        spellName:
+          selectedSpell.canonicalName ||
+          selectedSpell.name,
+        spellLevel:
+          selectedSpell.spellLevel ||
+          0,
+        targetId:
+          target.id
+      });
+
+    if (
+      result?.healResult
+    ) {
+      const now =
+        Date.now();
+
+      setHealVfx(
+        (previous) => ({
+          ...previous,
+          [target.id]: {
+            timestamp: now
+          }
+        })
+      );
+
+      triggerRecoil(
+        target.id,
+        {
+          x: active.x,
+          y: active.y
+        },
+        {
+          x: target.x,
+          y: target.y
+        },
+        'heal'
+      );
+
+      setTimeout(
+        () => {
+          setHealVfx(
+            (previous) => {
+              const next = {
+                ...previous
+              };
+
+              delete next[
+                target.id
+              ];
+
+              return next;
+            }
+          );
+        },
+        800
+      );
+    }
+
+    setTargetingAction(
+      null
+    );
+
+    setIsBottomHudMinimized(
+      false
+    );
+  };
+
+  const handleExecuteSpellPoint = async (
+    x: number,
+    y: number
+  ) => {
+    if (
+      busy ||
+      !active ||
+      !state ||
+      !targetingAction ||
+      targetingAction.category !==
+        'spell'
+    ) {
+      return;
+    }
+
+    const selectedSpell =
+      targetingAction;
+
+    const distance =
+      Math.max(
+        Math.abs(
+          active.x -
+          x
+        ),
+        Math.abs(
+          active.y -
+          y
+        )
+      );
+
+    if (
+      distance >
+      selectedSpell.rangeSquares
+    ) {
+      setError(
+        'Ponto fora do alcance de ' +
+          selectedSpell.name +
+          '.'
+      );
+
+      return;
+    }
+
+    await action({
+      action:
+        'spell',
+
+      character:
+        active.id,
+
+      spellName:
+        selectedSpell.canonicalName ||
+        selectedSpell.name,
+
+      spellLevel:
+        selectedSpell.spellLevel ||
+        0,
+
+      targetX:
+        x,
+
+      targetY:
+        y
+    });
+
+    setTargetingAction(
+      null
+    );
+
+    setIsBottomHudMinimized(
+      false
+    );
   };
 
   // EXECUTE COMBAT ATTACK FLOW - SERVER AUTHORITATIVE RESOLUTION
   // Sequence: Action Choice → Server Roll → Dice 3D → (dice dismiss) → Projectile VFX → Floating Text
-  const handleExecuteAttack = async (targetId: string) => {
+  const handleExecuteAttack = async (targetId?: string) => {
     if (busy || !active || !state) return;
-    const target = state.enemies.find((e) => e.id === targetId && e.hp > 0);
+    const living = state.enemies.filter((e) => e.hp > 0);
+    if (living.length === 0) return;
+    const target = (targetId && living.find((e) => e.id === targetId)) ||
+      (selectedEnemyId && living.find((e) => e.id === selectedEnemyId)) ||
+      living[0];
     if (!target) return;
 
     const dmgFormula = targetingAction?.damageFormula || active.damage;
@@ -788,14 +1661,38 @@ export default function Game() {
       }
     }
 
+    const dist = Math.max(Math.abs(active.x - target.x), Math.abs(active.y - target.y));
+    const isMelee = (curTargeting?.rangeSquares || 1) <= 1.5 && !actionName.includes('arco') && !actionName.includes('besta') && !actionName.includes('raio') && !actionName.includes('fogo') && !actionName.includes('mágico') && !actionName.includes('eldritch') && !actionName.includes('sagrad') && !actionName.includes('gelo');
+    if (isMelee && dist > 1) {
+      setError(`Alvo fora do alcance corpo a corpo (${dist} quadrados / ${(dist * 1.5).toFixed(1)}m). Aproxime-se a 1 quadrado (1.5m) de ${target.name} para desferir o golpe!`);
+      return;
+    }
+
     // Call server action FIRST (authoritative SRD roll + enemy AI counter-attack)
-    const res = await action({
-      action: 'attack',
-      character: active.id,
-      target: target.id,
-      damageFormula: dmgFormula,
-      mode
-    });
+    const res =
+      curTargeting?.category === 'spell'
+        ? await action({
+            action: 'spell',
+            character: active.id,
+            spellName:
+              curTargeting.canonicalName ||
+              curTargeting.name,
+            spellLevel: curTargeting.spellLevel || 0,
+            targetId: target.id
+          })
+        : curTargeting?.id === 'attack-offhand'
+        ? await action({
+            action: 'tacticalAction',
+            character: active.id,
+            actionId: 'attack-offhand',
+            targetId: target.id
+          })
+        : await action({
+            action: 'attack',
+            character: active.id,
+            target: target.id,
+            mode
+          });
 
     if (res && res.attackResult) {
       const r = res.attackResult;
@@ -820,11 +1717,38 @@ export default function Game() {
         type: r.isCrit ? 'crit' : r.hit ? 'damage' : 'miss'
       };
 
+      // Selective AI narration trigger (only on crits or boss/elite fatal blows)
+      const isBossOrElite =
+        target.maxHp >= 20 ||
+        target.name.includes('Ignisrax') ||
+        target.name.includes('Boss') ||
+        target.name.includes('Sentinela') ||
+        target.name.includes('Lorde') ||
+        target.name.includes('Wyrmling') ||
+        target.name.includes('Guardião') ||
+        target.name.includes('Alfa');
+      const isFatal = r.hpAfter <= 0;
+      const shouldNarrate = r.isCrit || (isFatal && isBossOrElite);
+
+      const narrateMessage = shouldNarrate
+        ? (r.isCrit && isFatal
+            ? `GOLPE CRÍTICO FATAL! ${active.name} desferiu um acerto devastador que eliminou ${target.name} com ${r.damage} de dano!`
+            : r.isCrit
+            ? `GOLPE CRÍTICO! ${active.name} acerta um ponto vital em ${target.name} causando ${r.damage} de dano estrondoso!`
+            : `VITÓRIA CONTRA O CHEFE! O inimigo temível ${target.name} tombou diante de ${active.name}!`)
+        : '';
+
       // Queue VFX to fire when dice roll dismisses
+      const isMelee = (curTargeting?.rangeSquares || 1) <= 1.5;
       pendingVfxRef.current = {
         projectile: newProj,
         floatingText: newFloat,
-        narrateCtx: `Resultado mecânico: ${r.text}`
+        narrateCtx: narrateMessage,
+        shouldNarrate,
+        targetId: target.id,
+        attackerPos: { x: active.x, y: active.y },
+        targetPos: { x: target.x, y: target.y },
+        isMelee
       };
 
       // 2. Show Dice 3D Roll FIRST (fires VFX when it completes via handleDiceComplete)
@@ -842,20 +1766,77 @@ export default function Game() {
     }
   };
 
-  // HANDLE ADVANCE ACT
+  // CAMPAIGN CONTINUE
+  // The old 1 -> 2 -> 3 -> 1 act loop no longer exists.
+  // The server decides the correct unfinished story objective.
   const handleAdvanceAct = async () => {
-    const next = (currentAct === 1 ? 2 : currentAct === 2 ? 3 : 1) as 1 | 2 | 3;
-    setCurrentAct(next);
-    const newSeed = Date.now();
-    setDungeonSeed(newSeed);
-    setProceduralDungeon(generateProceduralDungeon(next, dungeonSize, newSeed));
-    const ok = await action({ action: 'advanceAct', act: next });
-    if (ok) {
-      void narrate(
-        '',
-        `O grupo desce às profundezas e alcança o ${CAMPAIGN_ACTS[next].title}: ${CAMPAIGN_ACTS[next].subtitle}. ${CAMPAIGN_ACTS[next].dialogueIntro}`
-      );
+    if (!active) {
+      return;
     }
+
+    const result =
+      await action({
+        action:
+          'advanceAct',
+
+        character:
+          active.id
+      });
+
+    if (
+      !result?.room
+    ) {
+      return;
+    }
+
+    const updated =
+      result.room.state
+        .characters
+        .find(
+          (hero) =>
+            hero.id ===
+            active.id
+        );
+
+    if (!updated) {
+      return;
+    }
+
+    const location =
+      updated.location ??
+      result.room.state
+        .location ??
+      0;
+
+    const biome =
+      (
+        updated.biome ||
+        result.room.state
+          .biome ||
+        'village'
+      ) as BiomeType;
+
+    setBattlemapBiome(
+      biome
+    );
+
+    setBattlemapSeed(
+      Date.now()
+    );
+
+    setCurrentAct(
+      (
+        location >= 4
+          ? 3
+          : location >= 2
+            ? 2
+            : 1
+      ) as 1 | 2 | 3
+    );
+
+    setView(
+      'Aventura'
+    );
   };
 
   // HANDLE DRINK / USE CONSUMABLE (Healing Potions, etc.)
@@ -871,8 +1852,9 @@ export default function Game() {
 
     if (res && (res as any).healResult) {
       const hr = (res as any).healResult;
-      const posX = ((target.x + 0.5) / dungeonSize) * 100;
-      const posY = ((target.y + 0.5) / dungeonSize) * 100;
+      const curGrid = dungeonFloor ? dungeonFloor.width : getBiomeGridSize(battlemapBiome);
+      const posX = ((target.x + 0.5) / curGrid) * 100;
+      const posY = ((target.y + 0.5) / curGrid) * 100;
       const newFloat: FloatingNumber = {
         id: crypto.randomUUID(),
         x: posX,
@@ -884,6 +1866,17 @@ export default function Game() {
       setTimeout(() => {
         setFloatingTexts((prev) => prev.filter((f) => f.id !== newFloat.id));
       }, 1600);
+
+      // Trigger heal visual pulse & upward float
+      setHealVfx((prev) => ({ ...prev, [target.id]: { timestamp: Date.now() } }));
+      triggerRecoil(target.id, null, null, 'heal');
+      setTimeout(() => {
+        setHealVfx((prev) => {
+          const next = { ...prev };
+          delete next[target.id];
+          return next;
+        });
+      }, 700);
 
       void narrate('', `${active.name} consumiu ${itemId.includes('maior') ? 'Poção de Cura Maior' : 'Poção de Cura'} em ${target.name}, restaurando ${hr.healAmount} PV!`);
     }
@@ -914,6 +1907,123 @@ export default function Game() {
     );
   };
 
+  const handleNpcConversationTurn = useCallback(
+    async (
+      actionText: string,
+      conversation: NpcDialogTurn[]
+    ): Promise<NpcDialogReply | void> => {
+      if (
+        !room?.id ||
+        !activeNpcDialog
+      ) {
+        return;
+      }
+
+      try {
+        const response =
+          await fetch(
+            '/api/npc-dialogue',
+            {
+              method:
+                'POST',
+
+              headers: {
+                'Content-Type':
+                  'application/json'
+              },
+
+              body:
+                JSON.stringify({
+                  room:
+                    room.id,
+
+                  npcId:
+                    activeNpcDialog.id,
+
+                  text:
+                    actionText,
+
+                  conversation,
+
+                  key
+                })
+            }
+          );
+
+        const data =
+          await response.json() as { error?: string; choices?: string[]; answer?: string };
+
+        if (
+          !response.ok
+        ) {
+          throw new Error(
+            data.error ||
+            'Falha ao conversar com NPC.'
+          );
+        }
+
+        const choices =
+          Array.isArray(
+            data.choices
+          )
+            ? data.choices
+                .map(
+                  (
+                    choice: string
+                  ) => ({
+                    label:
+                      choice,
+
+                    actionText:
+                      choice
+                  })
+                )
+            : [];
+
+        return {
+          reply:
+            String(
+              data.answer ||
+              ''
+            ),
+
+          options:
+            choices
+        };
+      } catch (error) {
+        console.error(
+          '[NPC AI conversation]',
+          error
+        );
+
+        return {
+          reply:
+            'Perdoe-me. Parece que o barulho ao redor interrompeu meu raciocinio. Pergunte novamente em um instante.',
+
+          options: [
+            {
+              label:
+                'O que aconteceu por aqui recentemente?',
+              actionText:
+                'O que aconteceu por aqui recentemente?'
+            },
+            {
+              label:
+                'Conte-me sobre voce.',
+              actionText:
+                'Conte-me sobre voce.'
+            }
+          ]
+        };
+      }
+    },
+    [
+      room?.id,
+      activeNpcDialog?.id,
+      key
+    ]
+  );
+
   const handleTalkNpc = (npcId?: string) => {
     const npcs = state?.npcs || [];
     const chosen = npcId ? npcs.find((n) => n.id === npcId) : (npcs[0] || null);
@@ -921,53 +2031,96 @@ export default function Game() {
       const isDoran = chosen.id === 'doran';
       const isElenor = chosen.id === 'elenor';
       const isKaelen = chosen.id === 'kaelen';
+      const qp = active?.questProgress || state?.questProgress || {};
 
-      const options = isDoran
-        ? [
+      let dialogText = chosen.dialogue ? chosen.dialogue.join(' ') : chosen.description;
+      let options: { label: string; actionText: string }[] = [];
+
+      if (isDoran) {
+        if (qp.doran_talked) {
+          dialogText = 'A bênção sagrada de Valdoria já foi concedida ao seu grupo, bravos aventureiros! Consultem a Alquimista Elenor na oficina para receberem poções de cura e o Capitão Kaelen na ponte para autorização dos portões.';
+          options = [
+            { label: '🌿 Ir consultar a Alquimista Elenor agora', actionText: 'TALK_ELENOR' },
+            { label: '🛡️ Apresentar-se ao Capitão Kaelen na ponte', actionText: 'TALK_KAELEN' },
+            { label: 'Agradeço as sábias palavras, Ancião Doran.', actionText: 'O herói reafirma sua determinação ao Ancião Doran.' }
+          ];
+        } else {
+          dialogText = 'Criaturas feitas de cinzas e rancor espreitam além dos nossos muros. Como Ancião de Vila do Rio Verde, rogo a proteção dos deuses sobre vocês. Vão e expurguem a escuridão!';
+          options = [
             { label: 'Aceito a missão, Ancião Doran. O que nos aguarda na floresta?', actionText: `Pergunta ao Ancião Doran sobre o selo rompido e as criaturas de cinzas.` },
             { label: 'Conceda a bênção de Valdoria para a nossa expedição.', actionText: `Pede a bênção da vila e conselhos de sobrevivência a Doran.` },
             { label: 'Conversarei com Elenor e Kaelen antes de partir.', actionText: `Agradece ao Ancião e prepara-se com a guarda da vila.` }
-          ]
-        : isElenor
-        ? [
-            { label: 'Preciso beber uma Poção de Cura agora para me recompor.', actionText: `Toma um gole de elixir com Elenor e revigora seus pontos de vida.` },
-            { label: 'Como usar as poções durante o combate sob regras 5e?', actionText: `Pergunta a Elenor como administrar poções como 1 Ação de combate.` },
-            { label: 'Guardei os frascos na mochila. Muito obrigado, Elenor!', actionText: `Agradece pelas poções e guarda os frascos na mochila.` }
-          ]
-        : isKaelen
-        ? [
-            { label: 'Capitão Kaelen, soe o alarme! Iniciar combate contra invasores!', actionText: `Dá ordem para soar o alarme da vila e enfrentar a patrulha de cinzas!` },
-            { label: 'Quais são as regras de posicionamento e cobertura?', actionText: `Pede instruções militares sobre terreno e regras de 1 Ação em combate D&D 5e.` },
-            { label: 'Mantenham a guarda da ponte. Cuidaremos da floresta.', actionText: `Afirma ao Capitão que a guarda pode confiar nos aventureiros.` }
-          ]
-        : [
-            { label: 'O que você sabe sobre os arredores?', actionText: `Pergunta sobre a região a ${chosen.name}.` },
-            { label: 'Como posso ajudá-lo?', actionText: `Oferece auxílio a ${chosen.name}.` },
-            { label: 'Agradeço, continuarei explorando.', actionText: `Despede-se de ${chosen.name}.` }
           ];
+        }
+      } else if (isElenor) {
+        if (!qp.doran_talked) {
+          dialogText = 'Saudações, viajante! Antes de adquirir elixires arcanos, fale com o Ancião Doran na praça central para receber a bênção e a incumbência da vila.';
+          options = [
+            { label: '🕊️ Procurar o Ancião Doran na praça', actionText: 'TALK_DORAN' },
+            { label: '🛒 Abrir Empório Alquímico (Comprar & Vender)', actionText: 'OPEN_SHOP_ELENOR' }
+          ];
+        } else if (qp.elenor_talked) {
+          dialogText = 'As provisões e Poções de Cura já foram entregues ao seu grupo. Apressem-se ao Capitão Kaelen na ponte da vila para abrir os portões!';
+          options = [
+            { label: '🛡️ Falar com Capitão Kaelen na ponte', actionText: 'TALK_KAELEN' },
+            { label: '🛒 Abrir Empório Alquímico (Comprar & Vender)', actionText: 'OPEN_SHOP_ELENOR' },
+            { label: 'Como usar as poções durante o combate sob regras 5e?', actionText: `Pergunta a Elenor como administrar poções como 1 Ação de combate.` }
+          ];
+        } else {
+          dialogText = 'Doran avisou-me de sua expedição sagrada! Preparei elixires destilados das raízes de Valdoria. Tomem estas Poções de Cura para sobreviverem aos combates!';
+          options = [
+            { label: 'Receber Poções de Cura e marchar para o Capitão Kaelen', actionText: 'TALK_KAELEN' },
+            { label: '🛒 Abrir Empório Alquímico (Comprar & Vender)', actionText: 'OPEN_SHOP_ELENOR' },
+            { label: 'Como usar as poções durante o combate sob regras 5e?', actionText: `Pergunta a Elenor como administrar poções como 1 Ação de combate.` }
+          ];
+        }
+      } else if (isKaelen) {
+        if (!qp.elenor_talked) {
+          dialogText = 'Alto lá! Não posso autorizar a abertura dos portões sem que o grupo tenha se abastecido de Poções de Cura com a Alquimista Elenor.';
+          options = [
+            { label: '🌿 Ir falar com a Alquimista Elenor', actionText: 'TALK_ELENOR' },
+            { label: '🛒 Abrir Arsenal & Ferraria (Equipamentos 5e)', actionText: 'OPEN_SHOP_KAELEN' }
+          ];
+        } else if (qp.kaelen_talked) {
+          dialogText = 'Os portões da ponte estão abertos para vocês! A trilha da Floresta dos Sussurros conduz ao Menir Sagrado. Destruam a Sentinela de Cinzas!';
+          options = [
+            { label: '🌲 Marchar imediatamente para a Floresta dos Sussurros (Viajar)', actionText: 'TRAVEL_FOREST' },
+            { label: '🛒 Abrir Arsenal & Ferraria (Equipamentos 5e)', actionText: 'OPEN_SHOP_KAELEN' },
+            { label: 'Quais são as regras de posicionamento e cobertura?', actionText: `Pede instruções militares sobre terreno e regras de 1 Ação em combate D&D 5e.` }
+          ];
+        } else {
+          dialogText = 'Vejo que receberam a bênção de Doran e as poções de Elenor! A guarda confia na bravura de vocês. Concedo autorização para abrir os portões da ponte!';
+          options = [
+            { label: '🌲 Marchar para a Floresta dos Sussurros (Viajar)', actionText: 'TRAVEL_FOREST' },
+            { label: '🛒 Abrir Arsenal & Ferraria (Equipamentos 5e)', actionText: 'OPEN_SHOP_KAELEN' },
+            { label: 'Quais são as regras de posicionamento e cobertura?', actionText: `Pede instruções militares sobre terreno e regras de 1 Ação em combate D&D 5e.` }
+          ];
+        }
+      } else {
+        options = [
+          { label: 'O que você sabe sobre os arredores?', actionText: `Pergunta sobre a região a ${chosen.name}.` },
+          { label: 'Como posso ajudá-lo?', actionText: `Oferece auxílio a ${chosen.name}.` },
+          { label: 'Agradeço, continuarei explorando.', actionText: `Despede-se de ${chosen.name}.` }
+        ];
+      }
 
-      // Flag quest step progress on server
+      // Flag quest step progress on server (scoped to active hero and their party)
       void action({
         action: 'questStep',
+        character: active?.id,
         step: `${chosen.id}_talked`,
-        logText: `O herói conversou com ${chosen.name}.`
+        logText: `[Grupo] ${active?.name || 'O herói'} conversou com ${chosen.name}.`
       });
-
-      // If talking to Elenor, grant 2 healing potions to active hero if not already present
-      if (chosen.id === 'elenor' && active && !active.inventory?.includes('pocao-cura')) {
-        const newInv = active.inventory ? `${active.inventory}, pocao-cura:2` : 'pocao-cura:2';
-        void action({
-          action: 'character',
-          value: { ...active, inventory: newInv }
-        });
-      }
 
       setActiveNpcDialog({
         id: chosen.id,
         name: chosen.name,
         role: chosen.role,
-        dialogText: chosen.dialogue ? chosen.dialogue.join(' ') : chosen.description,
-        options
+        dialogText,
+        options,
+        species: chosen.species,
+        personality: chosen.personality,
+        currentGoal: chosen.currentGoal
       });
     } else {
       const generated = generateRandomNpc();
@@ -976,13 +2129,109 @@ export default function Game() {
         name: generated.name,
         role: generated.role,
         dialogText: `${generated.dialogueIntro} (${generated.description})`,
-        options: generated.options
+        options: generated.options,
+        species: generated.species,
+        personality: generated.personality
       });
     }
   };
 
-  const handleInteractObject = (type: string, x: number, y: number) => {
+  const handleInteractObject = async (type: string, x: number, y: number) => {
     if (!active) return;
+    if (type.startsWith('world:')) { await action({ action: 'worldInteract', character: active.id, objectId: type.slice(6) }); return; }
+
+    // Se estiver em uma expedição nas Catacumbas com andar ativo
+    if (battlemapBiome === 'dungeon' && dungeonFloor) {
+      const result = interactDungeonObject(dungeonFloor, x, y, active);
+
+      // POLISH_B_SYNC_DUNGEON_INTERACTION
+      if (dungeonExpedition) {
+        dungeonExpedition.floorHistory[
+          dungeonFloor.floorNumber
+        ] = dungeonFloor;
+
+        await action({
+          action:
+            'syncDungeonActivity',
+          character:
+            active.id,
+          expedition:
+            dungeonExpedition
+        });
+      }
+      if (result.type === 'stairs' || result.type === 'extraction') {
+        setShowExtractionModal(true);
+        try { playSfx('door'); } catch {}
+        void narrate('', result.message);
+        return;
+      }
+
+      if (result.type === 'chest' && result.success) {
+        try { playSfx('loot'); } catch {}
+        const curGrid = dungeonSize;
+        const posX = ((x + 0.5) / curGrid) * 100;
+        const posY = ((y + 0.5) / curGrid) * 100;
+        const floatText = result.goldFound ? `+${result.goldFound} PO 🪙` : 'Baú Saqueado!';
+        setFloatingTexts((prev) => [...prev, { id: crypto.randomUUID(), x: posX, y: posY, text: floatText, type: 'loot' }]);
+
+        if (dungeonExpedition && result.goldFound) {
+          dungeonExpedition.accumulatedLoot.gold += result.goldFound;
+          if (result.itemsFound) {
+            dungeonExpedition.accumulatedLoot.items.push(...result.itemsFound);
+          }
+
+          // POLISH_B_SYNC_DUNGEON_LOOT
+          await action({
+            action:
+              'syncDungeonActivity',
+            character:
+              active.id,
+            expedition:
+              dungeonExpedition
+          });
+        }
+        void narrate('', result.message);
+        return;
+      }
+
+      if (result.type === 'shrine' && result.success) {
+        try { playSfx('heal'); } catch {}
+        const curGrid = dungeonSize;
+        const posX = ((x + 0.5) / curGrid) * 100;
+        const posY = ((y + 0.5) / curGrid) * 100;
+        setFloatingTexts((prev) => [...prev, { id: crypto.randomUUID(), x: posX, y: posY, text: `+${result.hpRestored || 10} PV 🌿`, type: 'heal' }]);
+        void narrate('', result.message);
+        return;
+      }
+
+      if (result.type === 'door') {
+        try { playSfx('door'); } catch {}
+        void narrate('', result.message);
+        return;
+      }
+
+      if (result.type === 'trap') {
+        if (result.trapTriggered) {
+          try { playSfx('hit'); } catch {}
+          triggerRecoil(active.id, null, null, 'hit');
+          void narrate('', result.message);
+        } else {
+          try { playSfx('click'); } catch {}
+          void narrate('', result.message);
+        }
+        return;
+      }
+
+      void narrate('', result.message);
+      return;
+    }
+
+    if (type === 'dungeon_entrance') {
+      setShowExpeditionEntryModal(true);
+      return;
+    }
+
+    // Comportamento padrão em outras áreas / vila
     if (type === 'chest') {
       void narrate('', `${active.name} abre as caixas de suprimentos nas coordenadas [${String.fromCharCode(65 + x)}${y + 1}] e encontra provisões e poções de cura!`);
     } else if (type === 'shrine') {
@@ -990,7 +2239,9 @@ export default function Game() {
     } else if (type === 'well') {
       void narrate('', `${active.name} retira água fresca do poço de pedra da vila, recompondo o fôlego.`);
     } else if (type === 'stairs') {
-      if (isActBossDefeated) {
+      if (battlemapBiome === 'dungeon' && !dungeonFloor) {
+        setShowExpeditionEntryModal(true);
+      } else if (isActBossDefeated) {
         void handleAdvanceAct();
       } else {
         void narrate('', `${active.name} aproxima-se da escadaria, mas guardas e selos impedem a passagem enquanto a missão atual não for concluída.`);
@@ -998,26 +2249,607 @@ export default function Game() {
     }
   };
 
-  const handleTravel = (b: BiomeType) => {
-    const locIdx = b === 'village' ? 0 : b === 'forest' ? 1 : 2;
-    setBattlemapBiome(b);
-    setBattlemapSeed(Date.now());
-    const destName = b === 'village' ? 'Vila do Rio Verde' : b === 'forest' ? 'A Floresta dos Sussurros' : 'Catacumbas dos Três Selos';
-    void action({ action: 'location', location: locIdx, biome: b }).then(() => {
-      void narrate('', `O grupo de heróis viajou para ${destName}. O ambiente ao redor se transforma.`);
-    });
+  const handleTravel = async (b: BiomeType) => {
+    if (!active) return;
+
+    const locIdx =
+      b === 'village' ? 0
+      : b === 'forest' ? 1
+      : b === 'ruins' ? 2
+      : b === 'dungeon' ? 3
+      : b === 'canyon' ? 4
+      : 5;
+    const destName = locations[locIdx]?.name || 'Novo Território';
+    const ok = await action({ action: 'location', location: locIdx, biome: b, character: active.id });
+    if (ok) {
+      setBattlemapBiome(b);
+      setBattlemapSeed(Date.now());
+      setCurrentAct(Math.min(3, Math.max(1, locIdx >= 4 ? 3 : locIdx >= 2 ? 2 : 1)) as 1 | 2 | 3);
+    }
   };
+
+  const handleStartExpedition = async (expMode: 'solo' | 'party') => {
+    if (!active) return;
+    const partyIds = expMode === 'party'
+      ? (state?.characters || []).filter(c => active.partyId ? c.partyId === active.partyId : c.id === active.id).map(c => c.id)
+      : [active.id];
+    const newExp = createDungeonExpedition(Date.now(), expMode, partyIds);
+    setDungeonExpedition(newExp);
+    setDungeonFloor(newExp.floorHistory[1]);
+    setDungeonSize(12);
+    setBattlemapBiome('dungeon');
+    setBattlemapSeed(Date.now());
+    setShowExpeditionEntryModal(false);
+
+    await action({
+      action: 'syncDungeonActivity',
+      character: active.id,
+      expedition: newExp
+    });
+
+    // Mover o herói para o ponto de spawn seguro do Andar 1 (Entrada do Santuário)
+    const spawn = newExp.floorHistory[1].spawnHero;
+    await action({
+      action: 'move',
+      character: active.id,
+      x: spawn.x,
+      y: spawn.y,
+      maxBound: 11,
+      gridSize: 12
+    });
+
+    try { playSfx('door'); } catch {}
+    void narrate(
+      '',
+      `💀 [Catacumbas Profundas] ${active.name} iniciou uma Expedição no Andar 1 (${expMode === 'solo' ? 'Modo Solo' : 'Modo Grupo'}). Explore as salas, evite armadilhas e derrote o Guardião Chefe para destrancar a escadaria!`
+    );
+  };
+
+  const handleExtractExpedition = async () => {
+    if (!dungeonExpedition || !active) return;
+
+    const gold =
+      dungeonExpedition.accumulatedLoot.gold;
+
+    const items =
+      dungeonExpedition.accumulatedLoot.items;
+
+    const result =
+      await action({
+        action: 'extractDungeonActivity',
+        character:
+          active.id
+      });
+
+    if (!result?.room) {
+      return;
+    }
+
+    try {
+      playSfx('loot');
+    } catch {}
+
+    void narrate(
+      '',
+      '🏆 Extração Bem-Sucedida! ' +
+        active.name +
+        ' retornou com ' +
+        gold +
+        ' PO acumulado(s) e ' +
+        items.length +
+        ' item(ns) preservado(s).'
+    );
+
+    setDungeonExpedition(
+      null
+    );
+
+    setDungeonFloor(
+      null
+    );
+
+    setShowExtractionModal(
+      false
+    );
+
+    await handleTravel(
+      'village'
+    );
+  };
+
+  const handleDescendFloor = async () => {
+    if (!dungeonExpedition || !active) return;
+    const nextFloorNum = (dungeonExpedition.currentFloor || 1) + 1;
+    const nextFloor = generateDungeonFloor(dungeonExpedition.seed, nextFloorNum, dungeonExpedition.mode);
+
+    dungeonExpedition.currentFloor = nextFloorNum;
+    dungeonExpedition.maxFloorReached = Math.max(dungeonExpedition.maxFloorReached, nextFloorNum);
+    dungeonExpedition.floorHistory[nextFloorNum] = nextFloor;
+
+    // POLISH_B_SYNC_DUNGEON_DESCEND
+    await action({
+      action:
+        'syncDungeonActivity',
+      character:
+        active.id,
+      expedition:
+        dungeonExpedition
+    });
+
+    setDungeonFloor(nextFloor);
+    setShowExtractionModal(false);
+
+    // Mover herói para a entrada do novo andar
+    await action({
+      action: 'move',
+      character: active.id,
+      x: nextFloor.spawnHero.x,
+      y: nextFloor.spawnHero.y,
+      maxBound: 11,
+      gridSize: 12
+    });
+
+    try { playSfx('door'); } catch {}
+    void narrate(
+      '',
+      `🕯️ O grupo desceu as escadas de pedra para o Andar ${nextFloorNum}! O ar torna-se mais rarefeito e criaturas mais perigosas espreitam na névoa.`
+    );
+  };
+
+
+  // CAMPAIGN GUIDE COMBAT RESUME FIX
+  // The guide must never start a campaign battle on the village map
+  // just because a defeated hero respawned there.
+  const returnToActivePartyBattleFromGuide =
+    async (): Promise<boolean> => {
+      if (
+        !active ||
+        !state ||
+        !active.partyId ||
+        !state.combat
+      ) {
+        return false;
+      }
+
+      const order =
+        state.order || [];
+
+      const allyInBattle =
+        state.characters.find(
+          (hero) =>
+            hero.id !== active.id &&
+            hero.partyId === active.partyId &&
+            hero.hp > 0 &&
+            order.includes(hero.id)
+        );
+
+      const samePartyBattle =
+        state.combatPartyId === active.partyId ||
+        Boolean(allyInBattle);
+
+      if (
+        !samePartyBattle ||
+        order.includes(active.id)
+      ) {
+        return false;
+      }
+
+      const result =
+        await action({
+          action: 'joinCombat',
+          character: active.id
+        });
+
+      if (!result?.room) {
+        return false;
+      }
+
+      const returnedHero =
+        result.room.state.characters.find(
+          (hero) =>
+            hero.id === active.id
+        );
+
+      if (!returnedHero) {
+        return false;
+      }
+
+      const returnedBiome =
+        (
+          returnedHero.biome ||
+          result.room.state.biome ||
+          'village'
+        ) as BiomeType;
+
+      const returnedLocation =
+        returnedHero.location ??
+        result.room.state.location ??
+        0;
+
+      setBattlemapBiome(
+        returnedBiome
+      );
+
+      setBattlemapSeed(
+        Date.now()
+      );
+
+      setCurrentAct(
+        (
+          returnedLocation >= 4
+            ? 3
+            : returnedLocation >= 2
+              ? 2
+              : 1
+        ) as 1 | 2 | 3
+      );
+
+      setView('Aventura');
+
+      return true;
+    };
+
+  const getCurrentCampaignBattleLocation =
+    (): number => {
+      if (!active) {
+        return 0;
+      }
+
+      const qp =
+        active.questProgress ||
+        {};
+
+      const flags =
+        active.worldFlags ||
+        {};
+
+      // Campaign completed: there is no automatic
+      // "next campaign battle".
+      if (
+        qp.campaign_completed ||
+        qp.ignisrax_defeated ||
+        flags.campaign_completed ||
+        flags.ignisrax_defeated
+      ) {
+        return -1;
+      }
+
+      // Current objective priority.
+      if (
+        !qp.forest_cleared &&
+        qp.kaelen_talked
+      ) {
+        return 1;
+      }
+
+      if (
+        !qp.ruins_cleared &&
+        (
+          qp.forest_cleared ||
+          flags.ruins_unlocked
+        )
+      ) {
+        return 2;
+      }
+
+      if (
+        !qp.malakor_defeated &&
+        (
+          qp.ruins_cleared ||
+          qp.dungeon_entered ||
+          flags.catacombs_unsealed ||
+          flags.dungeon_unlocked
+        )
+      ) {
+        return 3;
+      }
+
+      if (
+        !qp.canyon_cleared &&
+        (
+          qp.malakor_defeated ||
+          flags.canyon_unlocked
+        )
+      ) {
+        return 4;
+      }
+
+      if (
+        !qp.ignisrax_defeated &&
+        (
+          qp.canyon_cleared ||
+          flags.dragon_lair_unlocked
+        )
+      ) {
+        return 5;
+      }
+
+      return (
+        active.location ??
+        0
+      );
+    };
+
+  const handleCampaignGuideTravel =
+    async (
+      biome: BiomeType
+    ) => {
+      if (!active) {
+        return;
+      }
+
+      // Existing multiplayer battle has priority over
+      // the generic campaign travel button.
+      if (
+        await returnToActivePartyBattleFromGuide()
+      ) {
+        return;
+      }
+
+      await handleTravel(
+        biome
+      );
+    };
+
+  const handleCampaignGuideCombat =
+    async () => {
+      if (
+        !active ||
+        !state
+      ) {
+        return;
+      }
+
+      // If the hero died while the party is still fighting,
+      // rejoin THAT battle and THAT map.
+      if (
+        await returnToActivePartyBattleFromGuide()
+      ) {
+        return;
+      }
+
+      // Otherwise resolve the map from campaign progression.
+      // Never use the respawn location (village) as the
+      // campaign battle location.
+      const targetLocation =
+        getCurrentCampaignBattleLocation();
+
+      if (
+        targetLocation < 0
+      ) {
+        setShowQuests(true);
+        return;
+      }
+
+      const target =
+        locations[
+          targetLocation
+        ];
+
+      if (!target) {
+        return;
+      }
+
+      const targetBiome =
+        target.biome as BiomeType;
+
+      const currentLocation =
+        active.location ??
+        0;
+
+      const currentBiome =
+        active.biome ||
+        'village';
+
+      if (
+        currentLocation !==
+          targetLocation ||
+        currentBiome !==
+          targetBiome
+      ) {
+        const travelResult =
+          await action({
+            action: 'location',
+            location:
+              targetLocation,
+            biome:
+              targetBiome,
+            character:
+              active.id
+          });
+
+        if (
+          !travelResult?.room
+        ) {
+          return;
+        }
+
+        setBattlemapBiome(
+          targetBiome
+        );
+
+        setBattlemapSeed(
+          Date.now()
+        );
+
+        setCurrentAct(
+          (
+            targetLocation >= 4
+              ? 3
+              : targetLocation >= 2
+                ? 2
+                : 1
+          ) as 1 | 2 | 3
+        );
+
+        setView('Aventura');
+      }
+
+      // Only after the server has persisted the correct
+      // campaign map may initiative begin.
+      await action({
+        action: 'startCombat',
+        character: active.id
+      });
+    };
+
+  const handleStartAdventure = async (
+    advId: string
+  ) => {
+    if (!active) {
+      return;
+    }
+
+    const result =
+      await action({
+        action:
+          'startAdventure',
+
+        adventureId:
+          advId,
+
+        character:
+          active.id
+      });
+
+    if (
+      !result?.room
+    ) {
+      return;
+    }
+
+    const updatedHero =
+      result.room.state
+        .characters
+        .find(
+          (hero) =>
+            hero.id ===
+            active.id
+        );
+
+    if (!updatedHero) {
+      return;
+    }
+
+    const targetBiome =
+      (
+        updatedHero.biome ||
+        result.room.state
+          .biome ||
+        'village'
+      ) as BiomeType;
+
+    setBattlemapBiome(
+      targetBiome
+    );
+
+    setBattlemapSeed(
+      Date.now()
+    );
+
+    setCurrentAct(
+      (
+        (updatedHero.location || 0) >= 4
+          ? 3
+          : (updatedHero.location || 0) >= 2
+            ? 2
+            : 1
+      ) as 1 | 2 | 3
+    );
+
+    setView('Aventura');
+    setShowQuests(false);
+  };
+
+  const handleChallengeDragon = async () => {
+    if (!active) return;
+
+    const travelResult =
+      await action({
+        action:
+          'location',
+        location: 5,
+        biome: 'lair',
+        character:
+          active.id
+      });
+
+    if (!travelResult?.room) {
+      return;
+    }
+
+    setBattlemapBiome(
+      'lair'
+    );
+
+    setBattlemapSeed(
+      Date.now()
+    );
+
+    await action({
+      action:
+        'startCombat',
+      character:
+        active.id
+    });
+
+    void narrate(
+      '',
+      '🔥 Ignisrax aguarda no coração da Cratera Magmática. O confronto final agora usa o mesmo motor de combate e progressão do restante de Valdoria.'
+    );
+  };
+
+  async function enterAdventure(mode: AdventureMode | 'resume' | 'join', value: string) {
+    if (gatewayLock.current) return;
+    gatewayLock.current = true;
+    setGatewayBusy(true);
+    setError('');
+    creatorDismissedRef.current = true;
+    try {
+      let result: ApiData | null | undefined;
+      if (mode === 'solo' || mode === 'coop' || mode === 'join') {
+        const created = await action(mode === 'join'
+          ? { action: 'join', code: value }
+          : { action: 'create', name: value || (mode === 'solo' ? 'Minha jornada em Valdoria' : 'Os guardiões de Valdoria') });
+        if (!created?.id) return;
+        result = await load(created.id);
+      } else {
+        result = await load(mode === 'mmo' ? 'mmo-world-village' : value);
+      }
+      if (!result?.room || result.error) {
+        setError(result?.error || 'Não foi possível abrir a aventura. Tente novamente.');
+        return;
+      }
+      const ownHero = result.room.state.characters.find(c => c.owner === result.user || (!c.owner && result.room.id !== 'mmo-world-village'));
+      setSelected(ownHero?.id || '');
+      setShowWorldSelector(false);
+      setShowCharacterCreator(!ownHero);
+      setView('Aventura');
+    } finally {
+      gatewayLock.current = false;
+      setGatewayBusy(false);
+    }
+  }
+
+  if (showWorldSelector) return <AdventureGateway
+    busy={loading || busy || gatewayBusy}
+    error={error}
+    rooms={rooms}
+    onStart={(mode, name) => enterAdventure(mode, name)}
+    onResume={id => enterAdventure('resume', id)}
+    onJoin={code => enterAdventure('join', code)}
+  />;
 
   return (
     <SidebarProvider>
-      <main className="game-shell flex flex-col md:flex-row w-full h-[100dvh] max-h-[100dvh] bg-[#050814] text-[#ede9dc] select-none overflow-hidden">
+      <main className={`game-shell flex flex-col md:flex-row w-full h-[100dvh] max-h-[100dvh] bg-[#050814] text-[#ede9dc] select-none overflow-hidden ${hitStopType === 'crit' ? 'hit-stop-crit' : hitStopType === 'normal' ? 'hit-stop' : ''}`}>
         {/* Navigation Sidebar (Desktop - Apenas exibido fora da tela de Aventura) */}
         {view !== 'Aventura' && (
           <Sidebar collapsible="none" className="navigation hidden md:flex shrink-0 h-full overflow-y-auto">
             <div className="brand flex items-center gap-3">
               <Dices size={30} className="text-amber-400" />
               <span className="font-serif font-black tracking-wider text-amber-200">
-                CRÔNICAS<small className="block text-[10px] tracking-widest text-zinc-400">DO VAZIO</small>
+                DRAGONS<small className="block text-[10px] tracking-widest text-zinc-400">AND DUNGEONS</small>
               </span>
             </div>
             <p className="eyebrow text-xs text-amber-500/80 font-bold tracking-widest px-3 mt-4">
@@ -1070,7 +2902,7 @@ export default function Game() {
             </button>
             <div className="flex flex-col">
               <span className="font-serif font-black tracking-wider text-amber-200 text-xs leading-none">
-                CRÔNICAS <span className="text-[9px] text-zinc-400 font-mono">5e</span>
+                DRAGONS <span className="text-[9px] text-zinc-400 font-mono">5e</span>
               </span>
               <span className="text-[10px] text-amber-400/90 font-bold truncate max-w-[125px]">
                 {CAMPAIGN_ACTS[currentAct].title.split(':')[0]}
@@ -1119,7 +2951,7 @@ export default function Game() {
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-2 text-xs sm:text-sm text-zinc-400">
                   <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-                  <span className="font-serif font-black tracking-wide text-zinc-200">Crônicas do Vazio</span>
+                  <span className="font-serif font-black tracking-wide text-zinc-200">Dragons and Dungeons</span>
                   <span className="text-zinc-600 font-mono">•</span>
                   <strong className="text-amber-300 font-bold uppercase tracking-wider text-xs sm:text-sm">
                     {view}
@@ -1158,12 +2990,28 @@ export default function Game() {
               {/* Action: Return to Adventure */}
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => setRoomDialog(true)}
+                  onClick={() => setShowWorldSelector(true)}
                   className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold text-zinc-300 bg-zinc-900 border border-zinc-700 hover:bg-zinc-800 cursor-pointer"
                   title="Gerenciar mesas e instâncias"
                 >
                   <Users size={13} className="text-emerald-400" />
                   <span className="hidden sm:inline">{room?.id === 'mmo-world-village' ? 'Mundo MMO' : (room?.name || 'Mesas')}</span>
+                </button>
+                <button
+                  onClick={() => setIsSettingsOpen(true)}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold text-amber-300 bg-zinc-900 border border-zinc-700 hover:bg-zinc-800 cursor-pointer"
+                  title="Configurações de Áudio e Jogo"
+                >
+                  <Settings size={13} />
+                  <span>Opções</span>
+                </button>
+                <button
+                  onClick={() => setIsMapEditorOpen(true)}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold text-sky-400 bg-zinc-900 border border-zinc-700 hover:bg-zinc-800 cursor-pointer"
+                  title="Gerador de Mapas IA e Colisão"
+                >
+                  <Compass size={13} />
+                  <span>Mapas IA</span>
                 </button>
                 <button
                   onClick={() => setView('Aventura')}
@@ -1187,40 +3035,37 @@ export default function Game() {
             </div>
           )}
 
+          {canReturnToPartyBattle && active && (
+            <div className="mx-2 sm:mx-4 mb-2 rounded-xl border border-amber-500/60 bg-amber-950/80 shadow-lg px-3 py-2 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-sm font-black text-amber-100">
+                  ?? Seu grupo ainda está em combate
+                </div>
+                <div className="text-xs text-amber-200/80">
+                  Você renasceu na vila, mas seus aliados continuam lutando.
+                </div>
+              </div>
+
+              <button
+                disabled={busy}
+                onClick={() =>
+                  void action({
+                    action: 'joinCombat',
+                    character: active.id
+                  })
+                }
+                className="shrink-0 rounded-lg bg-amber-500 hover:bg-amber-400 disabled:opacity-50 px-3 py-2 text-xs font-black uppercase tracking-wide text-black transition-all active:scale-95"
+              >
+                Retornar ? batalha
+              </button>
+            </div>
+          )}
+
           {/* Floating Combat Text Overlay */}
           <FloatingTextOverlay items={floatingTexts} />
 
           {/* Fast 3D Dice Roller (Stabilized with memoized handler to prevent re-roll loop) */}
           <DiceRoller3D roll={currentDiceRoll} onComplete={handleDiceComplete} />
-
-          {/* Paper Doll & Inventory Modal */}
-          {showInventory && active && (
-            <InventoryPanel
-              hero={active}
-              onClose={() => setShowInventory(false)}
-              onUpdateHero={(updated) => {
-                void action({ action: 'character', value: updated });
-              }}
-              onUseItem={(itemId, targetId) => void handleUseItem(itemId, targetId)}
-            />
-          )}
-
-          {/* Quest Log Modal */}
-          {showQuests && (
-            <QuestLog
-              onClose={() => setShowQuests(false)}
-              notes={state?.notes || ''}
-              onSaveNotes={(n) => void action({ action: 'notes', notes: n })}
-              isOwner={owner}
-            />
-          )}
-
-          {/* NPC Dialog Modal */}
-          <NpcDialog
-            npc={activeNpcDialog}
-            onClose={() => setActiveNpcDialog(null)}
-            onSelectOption={(txt) => void narrate(txt)}
-          />
 
           {/* Character Sheet Inspector/Editor Modal */}
           <CharacterEditor
@@ -1236,15 +3081,23 @@ export default function Game() {
           {/* Full Character Creator Wizard (4 Steps D&D 5e) */}
           <CharacterCreator
             isOpen={showCharacterCreator}
-            onClose={() => setShowCharacterCreator(false)}
+            onClose={() => {
+              setShowCharacterCreator(false);
+              creatorDismissedRef.current = true; // Don't re-open via load()
+              setShowWorldSelector(true);
+            }}
             busy={busy}
             onSave={async (newHero) => {
+              creatorDismissedRef.current = true; // Don't re-open via load()
               const res = await action({ action: 'character', value: newHero });
-              if (res) {
-                setShowCharacterCreator(false);
-                setSelected(newHero.id);
-                void narrate('', `${newHero.name}, um ${newHero.species} ${newHero.className} de nível ${newHero.level}, juntou-se à aventura na abadia!`);
-              }
+              if (!res) return;
+              const createdHero = res.room?.state?.characters?.find((c: Character) => c.id === newHero.id)
+                || res.room?.state?.characters?.find((c: Character) => c.owner === (res.user || user) && c.name === newHero.name);
+              const heroId = createdHero?.id || newHero.id;
+              setSelected(heroId);
+              setShowCharacterCreator(false);
+              setView('Aventura');
+              void narrate('', `${newHero.name}, um ${newHero.species} ${newHero.className} de nível ${newHero.level}, juntou-se à aventura em Vila do Rio Verde!`);
             }}
           />
 
@@ -1291,7 +3144,7 @@ export default function Game() {
               <div className="w-20 h-20 rounded-3xl bg-amber-950/40 border border-amber-500/50 flex items-center justify-center text-amber-300 shadow-2xl">
                 <Dices size={40} />
               </div>
-              <h1 className="text-3xl font-serif text-amber-200">Bem-vindo a Crônicas do Vazio</h1>
+              <h1 className="text-3xl font-serif text-amber-200">Bem-vindo a Dragons and Dungeons</h1>
               <p className="text-zinc-400 max-w-md text-sm leading-relaxed">
                 Crie ou entre em uma mesa para iniciar a aventura com automação de regras D&D 5e e narração rápida da Groq por IA.
               </p>
@@ -1311,158 +3164,27 @@ export default function Game() {
             </div>
           ) : view === 'Aventura' && room ? (
             /* --- AVENTURA: FULL-SCREEN ELECTRONIC GAME CANVAS WITH FLOATING DARK FANTASY HUD --- */
-            <div className="flex-1 min-h-0 h-full w-full flex flex-col overflow-hidden bg-[#0a0d0a] relative select-none">
-              {/* ═══ TOP INITIATIVE RIBBON BAR (DARK CHARCOAL & VINTAGE GOLD) ═══ */}
-              <div className="flex items-center justify-between px-3 py-1 bg-[#101410]/95 border-b border-[#2e3a2b]/80 z-30 shrink-0 gap-2">
-                {/* Left: Quick Location & Status */}
-                <div className="flex items-center gap-2 shrink-0">
-                  {room?.id === 'mmo-world-village' ? (
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.9)]" />
-                      <strong className="text-xs sm:text-sm font-serif text-emerald-300 truncate max-w-[130px] sm:max-w-[180px]" title="Mundo MMO Público Compartilhado">
-                        🌍 Mundo MMO
-                      </strong>
-                      <span className="text-[10px] bg-emerald-950/90 border border-emerald-600/60 text-emerald-300 px-1.5 py-0.2 rounded-full font-mono font-bold">
-                        {state?.characters?.length || 0} online
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                      <strong className="text-xs sm:text-sm font-serif text-amber-200 truncate max-w-[120px] sm:max-w-[160px]">
-                        {room?.name || 'Vila do Rio Verde'}
-                      </strong>
-                      <button
-                        type="button"
-                        onClick={() => void load('mmo-world-village')}
-                        className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-600/80 text-[10px] text-emerald-300 font-bold transition-all shadow cursor-pointer active:scale-95"
-                        title="Entrar no Mundo MMO Online com outros aventureiros"
-                      >
-                        <span>🌐 Mundo MMO</span>
-                      </button>
-                    </div>
-                  )}
-                  <span className="hidden xl:inline text-[11px] text-amber-400/80 font-mono">
-                    • {CAMPAIGN_ACTS[currentAct].title.split(':')[0]}
-                  </span>
-                </div>
-
-                {/* Center: Initiative Ribbon */}
-                <div className="flex-1 min-w-0 flex items-center justify-center">
-                  <InitiativeRibbon
-                    combat={Boolean(state?.combat)}
-                    round={state?.round || 1}
-                    turn={state?.turn || 0}
-                    order={state?.order || []}
-                    characters={state?.characters || []}
-                    enemies={state?.enemies || []}
-                    selectedTargetId={selectedEnemyId}
-                    onSelectTarget={(id) => {
-                      const isHero = state?.characters.some((c) => c.id === id);
-                      if (isHero) setSelected(id);
-                      else setSelectedEnemyId(id);
-                    }}
-                  />
-                </div>
-
-                {/* Right: Biome Selector & Mobile Tab Switcher */}
-                {/* Right: Biome Selector, HUD Toggles & Mobile Tab Switcher */}
-                <div className="flex items-center gap-1.5 shrink-0">
-                  {/* Biome Selector */}
-                  <div className="hidden lg:flex items-center gap-0.5 bg-zinc-900 border border-[#384333]/80 rounded-xl p-0.5 text-[10px] font-bold">
-                    {(['village', 'forest', 'dungeon'] as const).map((b) => (
-                      <button
-                        key={b}
-                        onClick={() => handleTravel(b)}
-                        className={`px-2 py-0.5 rounded-lg transition-colors ${
-                          battlemapBiome === b ? 'bg-amber-600/35 text-amber-200 font-black' : 'text-zinc-400 hover:text-white'
-                        }`}
-                      >
-                        {b === 'village' ? 'Vila' : b === 'forest' ? 'Mata' : 'Dungeon'}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Desktop Quick HUD Toggles */}
-                  <div className="hidden md:flex items-center gap-1">
-                    <button
-                      onClick={() => setShowPartySidebar(!showPartySidebar)}
-                      className={`flex items-center gap-1 px-2 py-0.5 rounded-lg border text-xs font-semibold transition-all ${
-                        showPartySidebar
-                          ? 'bg-amber-600/30 text-amber-200 border-amber-500/60 shadow-sm'
-                          : 'bg-zinc-900 text-zinc-400 border-zinc-700 hover:text-white'
-                      }`}
-                      title="Alternar Painel do Grupo"
-                    >
-                      <Users size={12} />
-                      <span>Grupo</span>
-                    </button>
-
-                    <button
-                      onClick={() => setShowGmSidebar(!showGmSidebar)}
-                      className={`flex items-center gap-1 px-2 py-0.5 rounded-lg border text-xs font-semibold transition-all ${
-                        showGmSidebar
-                          ? 'bg-amber-600/30 text-amber-200 border-amber-500/60 shadow-sm'
-                          : 'bg-zinc-900 text-zinc-400 border-zinc-700 hover:text-white'
-                      }`}
-                      title="Alternar Painel do Mestre e Chat"
-                    >
-                      <Flame size={12} className={showGmSidebar ? 'text-amber-400' : 'text-zinc-400'} />
-                      <span>Mestre</span>
-                    </button>
-
-                    <button
-                      onClick={() => setShowQuests(true)}
-                      className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-cyan-300 border border-zinc-700 text-xs font-semibold transition-colors"
-                      title="Diário de Missões"
-                    >
-                      <ScrollText size={12} />
-                      <span>Missões</span>
-                    </button>
-
-                    <button
-                      onClick={() => setShowInventory(true)}
-                      className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-amber-300 border border-zinc-700 text-xs font-semibold transition-colors"
-                      title="Mochila e Equipamentos"
-                    >
-                      <Package size={12} />
-                      <span>Mochila</span>
-                    </button>
-                  </div>
-
-                  {/* Mobile Tab Switcher */}
-                  <div className="flex md:hidden items-center gap-0.5 bg-zinc-900 border border-[#384333]/80 rounded-xl p-0.5 text-[11px] font-bold">
-                    <button
-                      onClick={() => setMobileTab('party')}
-                      className={`px-2 py-0.5 rounded-lg transition-colors ${
-                        mobileTab === 'party' ? 'bg-amber-600 text-black font-bold' : 'text-zinc-400'
-                      }`}
-                    >
-                      Grupo
-                    </button>
-                    <button
-                      onClick={() => setMobileTab('map')}
-                      className={`px-2 py-0.5 rounded-lg transition-colors ${
-                        mobileTab === 'map' ? 'bg-amber-600 text-black font-bold' : 'text-zinc-400'
-                      }`}
-                    >
-                      Mapa
-                    </button>
-                    <button
-                      onClick={() => setMobileTab('gm')}
-                      className={`px-2 py-0.5 rounded-lg transition-colors ${
-                        mobileTab === 'gm' ? 'bg-amber-600 text-black font-bold' : 'text-zinc-400'
-                      }`}
-                    >
-                      Mestre
-                    </button>
-                  </div>
-                </div>
-              </div>
-
+            <div className="play-screen flex-1 min-h-0 h-full w-full flex flex-col overflow-hidden bg-[#0a0d0a] relative select-none">
+              <GameNavigation
+                location={locations[active?.location ?? state?.location ?? 0]?.name || 'Valdoria'}
+                roomName={isMmoRoom ? 'Mundo compartilhado' : room.name}
+                combat={Boolean(state?.combat && isHeroInCombat)} busy={busy} hasHero={Boolean(active)}
+                onMap={() => { setMobileTab('map'); setShowPartySidebar(false); setShowGmSidebar(false); setIsBottomHudMinimized(true); }}
+                onActions={() => { setMobileTab('map'); setIsBottomHudMinimized(false); }}
+                onQuests={() => setShowQuests(true)} onInventory={() => setShowInventory(true)}
+                onParty={() => { setShowPartySidebar(v => !v); setMobileTab('party'); setShowGmSidebar(false); }}
+                onChat={() => { setShowGmSidebar(v => !v); setMobileTab('gm'); setShowPartySidebar(false); }}
+                onCharacter={() => { if (active) setCharacter(structuredClone(active)); }}
+                onSettings={() => setIsSettingsOpen(true)} onHome={() => setShowWorldSelector(true)}
+                onRooms={() => setRoomDialog(true)} onLibrary={() => setView('Compêndio')}
+                onRest={long => { if (active) void action({ action: long ? 'longRest' : 'shortRest', character: active.id }); }}
+                onTravel={biome => void handleTravel(biome)}
+                expeditionActive={Boolean(dungeonExpedition)}
+                onExpedition={() => dungeonExpedition ? setShowExtractionModal(true) : setShowExpeditionEntryModal(true)}
+              />
               {/* ═══ COMBAT TURN ANNOUNCEMENT BANNER (PROMINENT & UNMISTAKABLE) ═══ */}
-              {state?.combat && (
-                <div className={`w-full px-4 py-1.5 flex items-center justify-between z-30 shrink-0 shadow-md border-b transition-all duration-300 ${
+              {state && isHeroInCombat && (
+                <div className={`play-turn-banner w-full px-4 py-1.5 flex items-center justify-between z-30 shrink-0 shadow-md border-b transition-all duration-300 ${
                   isHeroTurn
                     ? 'bg-gradient-to-r from-amber-950/95 via-amber-900/90 to-amber-950/95 border-amber-400/90 shadow-[0_0_25px_rgba(251,191,36,0.35)]'
                     : 'bg-gradient-to-r from-red-950/95 via-zinc-950 to-red-950/95 border-red-700/90 shadow-[0_0_25px_rgba(239,68,68,0.35)]'
@@ -1494,7 +3216,7 @@ export default function Game() {
                           {state.actionUsed ? '⏳ Ação Utilizada' : '✨ 1 Ação'}
                         </span>
                         <span className="text-zinc-500 hidden sm:inline">•</span>
-                        <span className="text-cyan-300 font-bold hidden sm:inline">{active?.speed || 9}m Deslocamento</span>
+                        <span className="text-cyan-300 font-bold hidden sm:inline">{Math.max(0, (active?.speed || 9) + (state.movementBonusSquares || 0) * 1.5 - (state.movementUsed || 0) * 1.5)}m Deslocamento</span>
                         <button
                           type="button"
                           onClick={() => {
@@ -1531,13 +3253,13 @@ export default function Game() {
               )}
 
               {/* ═══ FULL-SCREEN GAME ARENA WITH FLOATING CRPG HUD ═══ */}
-              <div className="flex-1 min-h-0 h-full w-full relative overflow-hidden bg-[#050806]">
+              <div className="play-arena flex-1 min-h-0 h-full w-full relative overflow-hidden bg-[#050806]">
                 {/* 1. FULL-BLEED TACTICAL DUNGEON BOARD (Fills 100% of Screen Space) */}
                 <div className="absolute inset-0 z-0 flex items-center justify-center overflow-hidden">
                   <TacticalMap
                     characters={state?.characters || []}
-                    enemies={state?.enemies || []}
-                    selectedHeroId={selected}
+                    enemies={isHeroInVillage ? [] : (state?.enemies || [])}
+                    selectedHeroId={active?.id || selected}
                     selectedEnemyId={selectedEnemyId}
                     targetingAction={targetingAction}
                     onCancelTargeting={() => {
@@ -1545,11 +3267,27 @@ export default function Game() {
                       setIsBottomHudMinimized(false);
                     }}
                     onSelectToken={(type, id) => {
-                      if (type === 'hero') setSelected(id);
-                      else setSelectedEnemyId(id);
+                      if (
+                        type === 'hero' &&
+                        targetingAction?.category === 'spell' &&
+                        Boolean(
+                          targetingAction.healFormula
+                        )
+                      ) {
+                        void handleExecuteSupportSpell(
+                          id
+                        );
+                        return;
+                      }
+
+                      if (type === 'hero') {
+                        setSelected(id);
+                      } else {
+                        setSelectedEnemyId(id);
+                      }
                     }}
                     onMoveHero={(heroId, x, y) => {
-                      const curGrid = battlemapBiome === 'village' ? 8 : dungeonSize;
+                      const curGrid = dungeonFloor ? dungeonFloor.width : getBiomeGridSize(battlemapBiome);
                       // 1. Arm rollback shield to prevent older incoming snapshots from resetting position
                       localMoveShieldRef.current[heroId] = { x, y, time: Date.now() };
 
@@ -1575,32 +3313,61 @@ export default function Game() {
                         });
                       } catch {}
 
-                      // 4. Authoritative WebSocket dispatch with REST fallback
-                      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                      // Calculate step waypoints for animation and broadcast
+                      const hero = state?.characters.find((c) => c.id === heroId);
+                      const waypoints: { x: number; y: number }[] = [];
+                      if (hero) {
+                        let cx = hero.x;
+                        let cy = hero.y;
+                        while (cx !== x || cy !== y) {
+                          cx += Math.sign(x - cx);
+                          cy += Math.sign(y - cy);
+                          waypoints.push({ x: cx, y: cy });
+                        }
+                      }
+                      if (waypoints.length === 0) waypoints.push({ x, y });
+
+                      // MMO: REST is authoritative and persists movement.
+                      // The server broadcasts HERO_MOVED after the database update.
+                      if (isMmoRoom) {
+                        void action({ action: 'move', character: heroId, x, y, waypoints, maxBound: curGrid - 1, gridSize: curGrid });
+                      } else if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
                         wsRef.current.send(
                           JSON.stringify({
                             type: 'MOVE_PATH',
                             roomId: room?.id,
                             characterId: heroId,
-                            waypoints: [{ x, y }],
+                            waypoints,
                             seq: ++clientSeqRef.current,
                             maxBound: curGrid - 1,
                             gridSize: curGrid
                           })
                         );
                       } else {
-                        void action({ action: 'move', character: heroId, x, y, maxBound: curGrid - 1, gridSize: curGrid });
+                        void action({ action: 'move', character: heroId, x, y, waypoints, maxBound: curGrid - 1, gridSize: curGrid });
                       }
                     }}
                     onMoveHeroPath={(heroId, waypoints) => {
                       if (waypoints.length === 0) return;
                       const finalDest = waypoints[waypoints.length - 1];
-                      const curGrid = battlemapBiome === 'village' ? 8 : dungeonSize;
+                      const curGrid = dungeonFloor ? dungeonFloor.width : getBiomeGridSize(battlemapBiome);
 
                       // 1. Arm rollback shield
                       localMoveShieldRef.current[heroId] = { x: finalDest.x, y: finalDest.y, time: Date.now() };
 
-                      // 2. Instant cross-window broadcast on same PC
+                      // 2. Optimistic Update: instantly update position locally for zero perceived latency!
+                      setRoom((prev) => {
+                        if (!prev) return prev;
+                        return {
+                          ...prev,
+                          state: {
+                            ...prev.state,
+                            characters: prev.state.characters.map((c) => (c.id === heroId ? { ...c, x: finalDest.x, y: finalDest.y } : c))
+                          }
+                        };
+                      });
+
+                      // 3. Instant cross-window broadcast on same PC
                       try {
                         broadcastChannelRef.current?.postMessage({
                           type: 'HERO_MOVE_PATH',
@@ -1609,8 +3376,37 @@ export default function Game() {
                         });
                       } catch {}
 
-                      // 3. Authoritative WebSocket dispatch to Cloudflare Durable Object
-                      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                      // 4. Verificação de Exploração de Masmorra: Salas, Segredos e Inimigos
+                      if (battlemapBiome === 'dungeon' && dungeonFloor) {
+                        const discovery = checkRoomDiscovery(dungeonFloor, finalDest.x, finalDest.y);
+                        if (discovery.revealedSecretDoor) {
+                          try { playSfx('door'); } catch {}
+                          void narrate('', `👁️ Percepção Passiva! ${active?.name || 'O herói'} descobriu uma passagem secreta oculta na parede de pedra!`);
+                        }
+                        const encounter = checkRoomCombatEncounter(dungeonFloor, finalDest.x, finalDest.y);
+                        if (encounter.shouldTriggerCombat && !state?.combat) {
+                          void action({
+                            action: 'startCombat',
+                            character: heroId,
+                            enemies: encounter.enemiesToFight
+                          });
+                          void narrate('', `⚔️ ${encounter.room?.name || 'Câmara das Catacumbas'}: Inimigos à espreita atacam! Iniciando combate tático 5e!`);
+                        }
+                      }
+
+                      // MMO: REST is authoritative and persists movement.
+                      // The server broadcasts HERO_MOVED after the database update.
+                      if (isMmoRoom) {
+                        void action({
+                          action: 'move',
+                          character: heroId,
+                          x: finalDest.x,
+                          y: finalDest.y,
+                          waypoints,
+                          maxBound: curGrid - 1,
+                          gridSize: curGrid
+                        });
+                      } else if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
                         wsRef.current.send(
                           JSON.stringify({
                             type: 'MOVE_PATH',
@@ -1628,6 +3424,7 @@ export default function Game() {
                           character: heroId,
                           x: finalDest.x,
                           y: finalDest.y,
+                          waypoints,
                           maxBound: curGrid - 1,
                           gridSize: curGrid
                         });
@@ -1637,21 +3434,83 @@ export default function Game() {
                     onTargetEnemy={(enemyId) => {
                       handleExecuteAttack(enemyId);
                     }}
+                    onTargetHero={(heroId) => {
+                      if (
+                        targetingAction?.category ===
+                          'spell'
+                      ) {
+                        void handleExecuteSupportSpell(
+                          heroId
+                        );
+                      }
+                    }}
+                    onTargetSquare={(x, y) => {
+                      if (
+                        targetingAction?.category ===
+                          'spell'
+                      ) {
+                        void handleExecuteSpellPoint(
+                          x,
+                          y
+                        );
+                      }
+                    }}
                     locationName={location.name}
                     locationLabel={location.label}
-                    isCombat={Boolean(state?.combat)}
-                    canMove={Boolean(canEdit && (!state?.combat || isHeroTurn))}
+                    isCombat={Boolean(state?.combat && isHeroInCombat)}
+                    canMove={Boolean(canEdit && (!isHeroInCombat || isHeroTurn))}
                     dungeon={proceduralDungeon}
                     battlemap={organicBattlemap}
+                    dungeonFloor={dungeonFloor}
                     onInteractObject={handleInteractObject}
                     busy={busy}
                     activeTurnId={state?.combat ? turnId : undefined}
                     npcs={state?.npcs || []}
+                    corpses={state?.corpses || []}
+                    onLootCorpse={async (corpseId) => {
+                      if (!active) return;
+                      const corpse = (state?.corpses || []).find((c) => c.id === corpseId);
+                      try { playSfx('loot'); } catch {}
+                      if (corpse) {
+                        const curGrid = dungeonFloor ? dungeonFloor.width : getBiomeGridSize(battlemapBiome);
+                        const posX = ((corpse.x + 0.5) / curGrid) * 100;
+                        const posY = ((corpse.y + 0.5) / curGrid) * 100;
+                        const sparkleId = crypto.randomUUID();
+                        setLootSparkles((prev) => [...prev, { x: posX, y: posY, id: sparkleId }]);
+                        setTimeout(() => {
+                          setLootSparkles((prev) => prev.filter((s) => s.id !== sparkleId));
+                        }, 950);
+
+                        const floatId = crypto.randomUUID();
+                        const lootText = corpse.gold > 0 ? `+${corpse.gold} PO 🪙` : (corpse.items?.length ? `+${corpse.items[0]} ✨` : 'Saqueado!');
+                        setFloatingTexts((prev) => [...prev, {
+                          id: floatId,
+                          x: posX,
+                          y: posY,
+                          text: lootText,
+                          type: 'loot'
+                        }]);
+                        setTimeout(() => {
+                          setFloatingTexts((prev) => prev.filter((f) => f.id !== floatId));
+                        }, 1800);
+                      }
+                      await action({ action: 'lootCorpse', character: active.id, corpseId });
+                    }}
+                    onNavigatePortal={async (targetBiome) => {
+                      try { playSfx('door'); } catch {}
+                      await handleTravel(targetBiome);
+                    }}
                     onTalkNpc={handleTalkNpc}
                     projectiles={activeProjectiles}
                     biome={battlemapBiome}
                     movementUsed={state?.movementUsed || 0}
+                    movementBonusSquares={state?.movementBonusSquares || 0}
                     onInteractPlayer={(hero) => setInteractingPlayer(hero)}
+                    screenShake={hitStopType === 'crit'}
+                    tokenRecoils={tokenRecoils}
+                    slashVfx={slashVfx}
+                    healVfx={healVfx}
+                    lootSparkles={lootSparkles}
                   />
                 </div>
 
@@ -1664,7 +3523,13 @@ export default function Game() {
                         ALVO: {targetingAction.name}
                       </span>
                       <span className="text-[10px] text-zinc-300 font-mono">
-                        ({targetingAction.rangeSquares * 1.5}m) • Selecione um inimigo no tabuleiro
+                        ({targetingAction.rangeSquares * 1.5}m) • {targetingAction.targetMode === 'area'
+                          ? 'Selecione o centro da area'
+                          : targetingAction.targetMode === 'point'
+                            ? 'Selecione o destino'
+                            : targetingAction.targetMode === 'ally'
+                              ? 'Selecione um aliado'
+                              : 'Selecione um inimigo'}
                       </span>
                     </div>
                     <button
@@ -1711,9 +3576,9 @@ export default function Game() {
                   </div>
                 )}
 
-                {/* ═══ FLOATING TACTICAL COMBAT TURN CONTROLS (ALWAYS VISIBLE OUTSIDE BOTTOM CONSOLE) ═══ */}
-                {state?.combat && (
-                  <div className="absolute top-3 left-1/2 -translate-x-1/2 z-35 flex items-center gap-2 px-3.5 py-1.5 rounded-2xl bg-[#0b0f0b]/95 border-2 border-amber-500/90 shadow-[0_8px_32px_rgba(0,0,0,0.95)] backdrop-blur-xl animate-fade-in pointer-events-auto">
+                {/* ═══ FLOATING TACTICAL & OPEN WORLD COMBAT TURN CONTROLS ═══ */}
+                {!isHeroInVillage && state?.combat && isHeroInCombat ? (
+                  <div className="hidden" aria-hidden="true">
                     <div className="flex items-center gap-1.5 pr-2.5 border-r border-zinc-800 text-xs font-mono">
                       <span className="text-[10px] uppercase font-bold text-zinc-400">Rodada</span>
                       <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold text-xs border border-amber-500/30">
@@ -1721,68 +3586,123 @@ export default function Game() {
                       </span>
                     </div>
 
-                    {isHeroTurn ? (
-                      <div className="flex items-center gap-2">
-                        <div className="flex items-center gap-1.5 text-xs font-serif font-bold text-amber-200 pr-1">
-                          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping inline-block" />
-                          <span>Sua Vez: {active?.name || 'Herói'}</span>
-                        </div>
+                    {state.order && state.order.includes(active?.id || '') ? (
+                      isHeroTurn ? (
+                        <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1.5 text-xs font-serif font-bold text-amber-200 pr-1">
+                            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping inline-block" />
+                            <span>Sua Vez: {active?.name || 'Herói'}</span>
+                          </div>
 
-                        {/* Quick Attack Button if enemy exists */}
-                        {currentEnemy && (
-                          <button
-                            type="button"
-                            onClick={() => handleExecuteAttack(currentEnemy.id)}
-                            disabled={busy}
-                            className="px-2.5 py-1 rounded-xl bg-red-950/90 hover:bg-red-900 border border-red-500/80 text-red-100 text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95 shadow hover:shadow-red-500/20 cursor-pointer"
-                            title={`Atacar ${currentEnemy.name} com ${active?.weapon || 'arma'}`}
-                          >
-                            <Swords size={13} className="text-red-400" />
-                            <span className="hidden sm:inline">Atacar</span>
-                            <span className="text-[11px] text-red-200">({currentEnemy.name})</span>
-                          </button>
-                        )}
+                          {/* Quick Attack Button if enemy exists */}
+                          {currentEnemy && (
+                            <button
+                              type="button"
+                              onClick={() => handleExecuteAttack(currentEnemy.id)}
+                              disabled={busy}
+                              className="px-2.5 py-1 rounded-xl bg-red-950/90 hover:bg-red-900 border border-red-500/80 text-red-100 text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95 shadow hover:shadow-red-500/20 cursor-pointer"
+                              title={`Atacar ${currentEnemy.name} com ${active?.weapon || 'arma'}`}
+                            >
+                              <Swords size={13} className="text-red-400" />
+                              <span className="hidden sm:inline">Atacar</span>
+                              <span className="text-[11px] text-red-200">({currentEnemy.name})</span>
+                            </button>
+                          )}
 
-                        {/* Big Glowing Pass Turn / End Turn Button */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (active) void action({ action: 'pass', character: active.id });
-                          }}
-                          disabled={busy}
-                          className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-600 hover:from-amber-400 hover:to-yellow-300 text-black font-black text-xs uppercase tracking-wider shadow-[0_0_20px_rgba(245,158,11,0.7)] border-2 border-yellow-200 transition-all active:scale-95 flex items-center gap-1.5 animate-pulse cursor-pointer"
-                          title="Encerrar seu turno e passar a vez para o próximo combatente (D&D 5e)"
-                        >
-                          <Clock size={15} className="stroke-[3] text-black" />
-                          <span>PASSAR O TURNO (FIM)</span>
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-2 text-xs">
-                        <span className="text-red-300 font-serif font-bold animate-pulse">
-                          ⚔️ Turno do Inimigo: {turnEntity?.name || 'Adversário'}
-                        </span>
-                        {owner && (
+                          {/* Big Glowing Pass Turn / End Turn Button */}
                           <button
                             type="button"
                             onClick={() => {
-                              void action({ action: 'pass', character: turnId });
+                              if (active) void action({ action: 'pass', character: active.id });
                             }}
                             disabled={busy}
-                            className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-mono border border-zinc-600 ml-1 shadow cursor-pointer"
-                            title="Mestre: Forçar avanço de turno"
+                            className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-600 hover:from-amber-400 hover:to-yellow-300 text-black font-black text-xs uppercase tracking-wider shadow-[0_0_20px_rgba(245,158,11,0.7)] border-2 border-yellow-200 transition-all active:scale-95 flex items-center gap-1.5 animate-pulse cursor-pointer"
+                            title="Encerrar seu turno e passar a vez para o próximo combatente (D&D 5e)"
                           >
-                            Forçar Próximo ▶
+                            <Clock size={15} className="stroke-[3] text-black" />
+                            <span>PASSAR O TURNO (FIM)</span>
                           </button>
-                        )}
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="text-red-300 font-serif font-bold animate-pulse">
+                            ⚔️ Turno de: {turnEntity?.name || 'Inimigo'}
+                          </span>
+                          {owner && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void action({ action: 'pass', character: turnId });
+                              }}
+                              disabled={busy}
+                              className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-mono border border-zinc-600 ml-1 shadow cursor-pointer"
+                              title="Mestre: Forçar avanço de turno"
+                            >
+                              Forçar Próximo ▶
+                            </button>
+                          )}
+                        </div>
+                      )
+                    ) : (
+                      /* Player in MMO watching ongoing battle */
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-xs text-amber-200 font-serif">
+                          ⚔️ Batalha em Andamento ({turnEntity?.name || 'Inimigo'})
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (active) void action({ action: 'joinCombat', character: active.id });
+                          }}
+                          disabled={busy}
+                          className="px-3 py-1 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-black text-xs uppercase tracking-wider shadow-[0_0_15px_rgba(16,185,129,0.7)] border border-emerald-300 transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer"
+                          title="Rolar iniciativa e participar desta batalha"
+                        >
+                          <Shield size={13} className="text-white" />
+                          <span>Entrar na Batalha</span>
+                        </button>
                       </div>
                     )}
                   </div>
-                )}
+                ) : !isHeroInVillage && livingEnemies.length > 0 ? (
+                  /* Open World Free Combat Banner */
+                  <div className="hidden" aria-hidden="true">
+                    <div className="flex items-center gap-1.5 text-xs text-sky-200 font-serif">
+                      <Swords size={14} className="text-sky-400 animate-pulse" />
+                      <span className="hidden sm:inline font-bold">Combate Aberto (Tempo Real)</span>
+                    </div>
+
+                    {currentEnemy && (
+                      <button
+                        type="button"
+                        onClick={() => handleExecuteAttack(currentEnemy.id)}
+                        disabled={busy}
+                        className="px-2.5 py-1 rounded-xl bg-red-950/90 hover:bg-red-900 border border-red-500/80 text-red-100 text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95 shadow cursor-pointer"
+                        title={`Atacar ${currentEnemy.name}`}
+                      >
+                        <span>Golpear {currentEnemy.name}</span>
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (active) void action({ action: 'startCombat', character: active.id });
+                      }}
+                      disabled={busy}
+                      className="px-2.5 py-1 rounded-xl bg-gradient-to-r from-amber-600 to-yellow-500 hover:from-amber-500 hover:to-yellow-400 text-black font-black text-xs uppercase tracking-wider shadow border border-yellow-200 transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
+                      title="Iniciar combate formal por turnos e rolar iniciativa com a party (D&D 5e)"
+                    >
+                      <Crown size={12} className="text-black" />
+                      <span className="hidden sm:inline">Iniciar Batalha Tática (Iniciativa)</span>
+                      <span className="sm:hidden">Iniciativa</span>
+                    </button>
+                  </div>
+                ) : null}
 
                 {/* 1.1 LIVE GM NARRATION FLOATING WIDGET (Always visible directly on screen) */}
                 {latestGmLog && showNarrativeBox && !showGmSidebar && (
-                  <div className="absolute top-3 right-3 sm:right-4 z-20 max-w-xs sm:max-w-md bg-[#090e09]/95 border border-amber-500/70 rounded-2xl p-3 shadow-[0_8px_30px_rgba(0,0,0,0.85)] backdrop-blur-xl animate-fade-in pointer-events-auto">
+                  <div className="play-narration absolute top-3 right-3 sm:right-4 z-20 max-w-xs sm:max-w-md bg-[#090e09]/95 border border-amber-500/70 rounded-2xl p-3 shadow-[0_8px_30px_rgba(0,0,0,0.85)] backdrop-blur-xl animate-fade-in pointer-events-auto">
                     <div className="flex items-center justify-between border-b border-zinc-800 pb-1.5 mb-1.5">
                       <div className="flex items-center gap-1.5 text-amber-400 text-xs font-serif font-bold">
                         <Flame size={14} className="animate-pulse text-amber-400" />
@@ -1804,15 +3724,17 @@ export default function Game() {
                         </button>
                       </div>
                     </div>
-                    <p className="text-xs text-amber-100/95 leading-relaxed font-serif italic line-clamp-4">
-                      "{latestGmLog.text}"
-                    </p>
+                    <div className="max-h-56 sm:max-h-64 overflow-y-auto pr-1.5 custom-scrollbar">
+                      <p className="text-xs text-amber-100/95 leading-relaxed font-serif italic whitespace-pre-line">
+                        "{latestGmLog.text}"
+                      </p>
+                    </div>
                   </div>
                 )}
 
                 {/* 2. DOCKED LEFT PARTY COLUMN (LATERAL PARTY ROSTER - COLLAPSIBLE) */}
                 {showPartySidebar && (
-                  <div className={`absolute top-2 left-2 bottom-20 z-20 pointer-events-auto transition-all duration-300 ${
+                  <div className={`play-party-panel absolute top-2 left-2 bottom-20 z-20 pointer-events-auto transition-all duration-300 ${
                     mobileTab === 'party' ? 'flex' : 'hidden'
                   } md:flex flex-col`}>
                     <PartySidebar
@@ -1840,10 +3762,12 @@ export default function Game() {
                       isMmoRoom={room?.id === 'mmo-world-village'}
                       onInteractPlayer={(hero) => setInteractingPlayer(hero)}
                       onInviteToParty={async (hero) => {
-                        await action({ action: 'partyInvite', character: selected, targetCharId: hero.id });
+                        const senderCharId = active?.id || myHeroes[0]?.id || selected;
+                        await action({ action: 'partyInvite', character: senderCharId, targetCharId: hero.id });
                       }}
                       onLeaveParty={async () => {
-                        await action({ action: 'partyLeave', character: selected });
+                        const senderCharId = active?.id || myHeroes[0]?.id || selected;
+                        await action({ action: 'partyLeave', character: senderCharId });
                       }}
                     />
                   </div>
@@ -1851,7 +3775,7 @@ export default function Game() {
 
                 {/* 3. DOCKED RIGHT GAMEMASTER DRAWER (CAIXA DE GM RETRÁTIL COM NARRATIVA E CHAT) */}
                 {showGmSidebar && (
-                  <div className={`absolute top-2 right-2 bottom-20 z-30 pointer-events-auto transition-all duration-300 ${
+                  <div className={`play-chat-panel absolute top-2 right-2 bottom-20 z-30 pointer-events-auto transition-all duration-300 ${
                     mobileTab === 'gm' ? 'flex' : 'hidden'
                   } md:flex flex-col shadow-2xl`}>
                     <GamemasterSidebar
@@ -1861,15 +3785,15 @@ export default function Game() {
                       activeHero={active || null}
                       currentEnemy={currentEnemy}
                       onAttack={() => {
-                        if (active && currentEnemy) {
+                        if (active && currentEnemy && currentEnemy.hp > 0) {
                           handleExecuteAttack(currentEnemy.id);
-                        } else if (active && state?.enemies?.[0]) {
-                          handleExecuteAttack(state.enemies[0].id);
+                        } else if (active && livingEnemies.length > 0) {
+                          handleExecuteAttack(livingEnemies[0].id);
                         }
                       }}
                       onCastSpell={() => {
                         if (active) {
-                          const target = currentEnemy || state?.enemies?.[0];
+                          const target = (currentEnemy && currentEnemy.hp > 0) ? currentEnemy : livingEnemies[0];
                           if (target) {
                             void action({
                               action: 'spell',
@@ -1909,43 +3833,186 @@ export default function Game() {
 
                 {/* 4. FLOATING BOTTOM ACTION BAR (ATAQUE, MAGIA, PASSAR TURNO, POÇÃO, ITENS) */}
                 {active && (
-                  <div className={`absolute bottom-1 left-1/2 -translate-x-1/2 z-30 pointer-events-auto w-[98%] max-w-6xl transition-all ${
+                  <div className={`play-console-wrap absolute bottom-1 left-1/2 -translate-x-1/2 z-30 pointer-events-auto w-[98%] max-w-6xl transition-all ${
                     mobileTab === 'party' || mobileTab === 'gm' ? 'hidden md:block' : 'block'
                   }`}>
-                    <BottomPlayerHud
+                    <BattleConsole
                       activeHero={active}
                       party={state?.characters || []}
+                      spellEffects={state?.spellEffects || []}
                       onSelectHero={(id) => setSelected(id)}
                       isMinimized={isBottomHudMinimized}
                       onToggleMinimized={(v) => setIsBottomHudMinimized(v)}
                       onActionSelect={(act) => {
-                        if (act.category === 'attack' || (act.category === 'spell' && !act.healFormula)) {
-                          // Minimize bottom console and enter explicit Target Selection Mode on the board
-                          setTargetingAction(act);
-                          setIsBottomHudMinimized(true);
-                        } else if (act.category === 'spell' && act.healFormula) {
-                          void action({
-                            action: 'spell',
-                            character: active.id,
-                            spellName: act.name,
-                            spellLevel: act.spellLevel || 0,
-                            healFormula: act.healFormula,
-                            targetId: active.id
-                          });
-                        } else if (act.category === 'item') {
-                          void handleUseItem(act.id, active.id);
-                        } else if (act.category === 'skill') {
+                        if (!active) {
+                          return;
+                        }
+
+                        if (
+                          act.category === 'skill'
+                        ) {
+                          const skillName =
+                            act.name.replace(
+                              /^Teste de\s+/,
+                              ''
+                            );
+
+                          const skill =
+                            skills.find(
+                              ([name]) =>
+                                name ===
+                                skillName
+                            );
+
                           void action({
                             action: 'check',
-                            character: active.id,
-                            skill: act.name.replace('Teste de ', ''),
-                            mode: 'normal'
+                            character:
+                              active.id,
+                            ability:
+                              skill?.[1] ??
+                              0,
+                            skill:
+                              skillName,
+                            label:
+                              'Teste de ' +
+                              skillName
                           });
-                        } else if (act.category === 'action') {
-                          void action({ action: 'tactic', character: active.id, tactic: act.id });
+
+                          return;
+                        }
+
+                        if (
+                          act.category ===
+                            'spell'
+                        ) {
+                          const spellName =
+                            act.canonicalName ||
+                            act.name;
+
+                          /*
+                           * Shield keeps the existing automatic
+                           * reaction policy used by enemy AI.
+                           */
+                          /* SRD_3B_C1_COUNTERSPELL_UI */
+                          if (
+                            spellName === 'Shield' ||
+                            spellName === 'Counterspell'
+                          ) {
+                            void action({
+                              action:
+                                'tacticalAction',
+
+                              character:
+                                active.id,
+
+                              actionId:
+                                spellName === 'Shield'
+                                  ? 'escudo-arcano'
+                                  : 'counterspell'
+                            });
+
+                            return;
+                          }
+
+                          /*
+                           * Personal spells need no map target.
+                           */
+                          if (
+                            act.targetMode ===
+                              'self'
+                          ) {
+                            void action({
+                              action:
+                                'spell',
+
+                              character:
+                                active.id,
+
+                              spellName,
+
+                              spellLevel:
+                                act.spellLevel ||
+                                0,
+
+                              targetId:
+                                active.id
+                            });
+
+                            return;
+                          }
+
+                          /*
+                           * Enemy / ally / point / area spells
+                           * enter targeting mode.
+                           */
+                          setTargetingAction(
+                            act
+                          );
+
+                          setIsBottomHudMinimized(
+                            true
+                          );
+
+                          return;
+                        }
+
+                        if (
+                          (
+                            act.economyType ===
+                              'reaction' ||
+                            act.category ===
+                              'action'
+                          )
+                        ) {
+                          void action({
+                            action:
+                              'tacticalAction',
+                            character:
+                              active.id,
+                            actionId:
+                              act.id
+                          });
+
+                          return;
+                        }
+
+                        if (
+                          act.category ===
+                            'item'
+                        ) {
+                          void handleUseItem(
+                            act.id,
+                            active.id
+                          );
+
+                          return;
+                        }
+
+                        if (
+                          act.category ===
+                            'attack'
+                        ) {
+                          setTargetingAction(
+                            act
+                          );
+
+                          setIsBottomHudMinimized(
+                            true
+                          );
                         }
                       }}
                       onOpenInventory={() => setShowInventory(true)}
+                      onOpenShop={() => {
+                        setShopMerchant({
+                          id: 'elenor',
+                          name: 'Empório de Valdoria',
+                          role: 'Mercado de Provisões & Alquimia',
+                          category: 'alchemy',
+                          avatar: '🛒',
+                          dialogue: 'Poções, armas e suprimentos certificados pelo Ancião Doran para sua jornada.'
+                        });
+                        setShowShop(true);
+                      }}
                       onOpenLevelUp={() => {
                         if (active) {
                           setLevelUpHero(active);
@@ -1959,9 +4026,18 @@ export default function Game() {
                         if (active) void action({ action: 'pass', character: active.id });
                       }}
                       onUseItem={(itemId, targetId) => void handleUseItem(itemId, targetId)}
-                      isCombat={Boolean(state?.combat)}
+                      onStartCombat={!isHeroInVillage && !isHeroInCombat ? () => { if(active) void action({action:state?.combat?'joinCombat':livingEnemies.length?'startCombat':'encounter',character:active.id}); } : undefined}
+                      combatEntryLabel={state?.combat?'Entrar no combate':'Rolar iniciativa'}
+                      isCombat={Boolean(state?.combat && isHeroInCombat)}
                       isHeroTurn={Boolean(isHeroTurn)}
                       actionUsed={Boolean(state?.actionUsed)}
+                      bonusActionUsed={Boolean(state?.bonusActionUsed)}
+                      reactionUsed={Boolean(
+                        active &&
+                        state?.reactionUsedBy?.[active.id]
+                      )}
+                      movementUsed={state?.movementUsed || 0}
+                      movementBonusSquares={state?.movementBonusSquares || 0}
                       busy={busy}
                     />
                   </div>
@@ -1993,9 +4069,16 @@ export default function Game() {
                 {/* 1.2 ON-SCREEN CAMPAIGN STEP TRACKER & STORY GUIDE */}
                 <CampaignTracker
                   state={state || null}
+                  activeHero={active}
                   onTalkNpc={(npcId) => handleTalkNpc(npcId)}
-                  onTravel={(b) => handleTravel(b)}
-                  onStartCombat={() => void action({ action: 'encounter' })}
+                  onTravel={(b) => {
+                    void handleCampaignGuideTravel(
+                      b
+                    );
+                  }}
+                  onStartCombat={() => {
+                    void handleCampaignGuideCombat();
+                  }}
                   onOpenJournal={() => setShowQuests(true)}
                 />
 
@@ -2006,7 +4089,13 @@ export default function Game() {
                     notes={state?.notes || ''}
                     onSaveNotes={(n) => void action({ action: 'notes', notes: n })}
                     isOwner={Boolean(owner)}
-                    questProgress={state?.questProgress}
+                    questProgress={active?.questProgress || state?.questProgress}
+                    worldFlags={active?.worldFlags || state?.worldFlags}
+                    activeAdventureId={active?.activeMicroAdventureId}
+                    adventureCompletions={active?.adventureCompletions}
+                    adventureCooldowns={active?.adventureCooldowns}
+                    onStartAdventure={handleStartAdventure}
+                    onChallengeDragon={handleChallengeDragon}
                   />
                 )}
 
@@ -2029,18 +4118,223 @@ export default function Game() {
                       setShowLevelUp(false);
                       setLevelUpHero(null);
                     }}
-                    onConfirmLevelUp={(statIncreases: number[]) => {
+                    onConfirmLevelUp={(statIncreases: number[], spellChoices) => {
                       const target = levelUpHero || active;
                       if (!target) return;
                       void action({
                         action: 'levelup',
                         character: target.id,
-                        statIncreases
+                        statIncreases,
+                        spellChoices
                       });
                       setShowLevelUp(false);
                       setLevelUpHero(null);
                     }}
                   />
+                )}
+
+                {/* NPC Dialogue Modal */}
+                {activeNpcDialog && (
+                  <NpcDialog
+                    npc={activeNpcDialog}
+                    onSelectOption={async (actionText, conversation) => {
+                      if (actionText === 'OPEN_SHOP_ELENOR') {
+                        setShopMerchant({
+                          id: 'elenor',
+                          name: 'Alquimista Elenor',
+                          role: 'Erborista • Mestre das Poções',
+                          category: 'alchemy',
+                          avatar: '🧪',
+                          dialogue: 'Trago elixires destilados das raízes de Valdoria e pergaminhos arcanos para suas expedições.'
+                        });
+                        setShowShop(true);
+                        setActiveNpcDialog(null);
+                        return;
+                      }
+                      if (actionText === 'OPEN_SHOP_KAELEN') {
+                        setShopMerchant({
+                          id: 'kaelen',
+                          name: 'Capitão Kaelen',
+                          role: 'Guarda da Fronteira • Armeiro da Vila',
+                          category: 'blacksmith',
+                          avatar: '⚔️',
+                          dialogue: 'Aço forjado nas colinas e armaduras robustas certificadas para combate.'
+                        });
+                        setShowShop(true);
+                        setActiveNpcDialog(null);
+                        return;
+                      }
+                      if (actionText === 'TALK_DORAN') {
+                        setActiveNpcDialog(null);
+                        handleTalkNpc('doran');
+                        return;
+                      }
+                      if (actionText === 'TALK_ELENOR') {
+                        setActiveNpcDialog(null);
+                        handleTalkNpc('elenor');
+                        return;
+                      }
+                      if (actionText === 'TALK_KAELEN') {
+                        setActiveNpcDialog(null);
+                        handleTalkNpc('kaelen');
+                        return;
+                      }
+                      if (actionText === 'TRAVEL_FOREST') {
+                        setActiveNpcDialog(null);
+                        void handleTravel('forest');
+                        return;
+                      }
+                      void narrate('', `${active?.name || 'O herói'}: "${actionText}"`);
+                      setActiveNpcDialog(null);
+                    }}
+                    onClose={() => setActiveNpcDialog(null)}
+                  />
+                )}
+
+                {/* Shop & Commerce Modal */}
+                {showShop && shopMerchant && active && (
+                  <ShopModal
+                    isOpen={showShop}
+                    merchant={shopMerchant}
+                    hero={active}
+                    priceMultiplier={state?.economyContext?.priceMultiplier || 1.0}
+                    economyNotice={state?.economyContext?.narrativeNotice}
+                    onClose={() => setShowShop(false)}
+                    onBuyItem={async (item, price) => {
+                      await action({
+                        action: 'buyItem',
+                        character: active.id,
+                        item,
+                        price
+                      });
+                    }}
+                    onSellItem={async (itemName, salePrice) => {
+                      await action({
+                        action: 'sellItem',
+                        character: active.id,
+                        itemName,
+                        salePrice
+                      });
+                    }}
+                  />
+                )}
+
+                {/* Game Settings Modal */}
+                <GameSettingsModal open={isSettingsOpen} onOpenChange={setIsSettingsOpen} />
+
+                {/* Map Editor & AI Prompt Modal */}
+                <MapEditorModal open={isMapEditorOpen} onOpenChange={setIsMapEditorOpen} currentBiome={battlemapBiome} />
+
+                {/* Catacombs Expedition Entry Modal */}
+                {showExpeditionEntryModal && (
+                  <Dialog open={showExpeditionEntryModal} onOpenChange={setShowExpeditionEntryModal}>
+                    <DialogContent className="max-w-md bg-zinc-950/95 border-amber-500/50 text-zinc-100 shadow-[0_0_50px_rgba(0,0,0,0.8)] backdrop-blur-xl">
+                      <DialogHeader>
+                        <DialogTitle className="text-lg font-serif font-bold text-amber-300 flex items-center gap-2">
+                          <span>💀</span>
+                          <span>Expedição às Catacumbas dos Três Selos</span>
+                        </DialogTitle>
+                        <DialogDescription className="text-xs text-zinc-300 leading-relaxed pt-1">
+                          As catacumbas ancestrais contêm múltiplos andares gerados proceduralmente.
+                          Monstros patrulham as salas, segredos aguardam os atentos e a cada andar o perigo e os tesouros aumentam.
+                        </DialogDescription>
+                      </DialogHeader>
+
+                      <div className="space-y-3 py-3">
+                        <div className="p-3 rounded-xl bg-zinc-900/80 border border-zinc-800 space-y-1">
+                          <div className="font-bold text-xs text-amber-200">Como você deseja entrar?</div>
+                          <div className="text-[11px] text-zinc-400">
+                            No modo solo, os encontros são equilibrados para 1 aventureiro. Em grupo, composições ricas de inimigos com elites táticos serão geradas.
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2.5">
+                          <button
+                            onClick={() => handleStartExpedition('solo')}
+                            className="p-3 rounded-xl bg-gradient-to-br from-zinc-900 to-zinc-950 border border-zinc-700 hover:border-amber-400 text-left transition-all hover:scale-[1.02] cursor-pointer"
+                          >
+                            <div className="text-sm font-bold text-amber-200">⚔️ Entrar Sozinho</div>
+                            <div className="text-[10px] text-zinc-400 pt-0.5">Modo Solo equilibrado</div>
+                          </button>
+
+                          <button
+                            onClick={() => handleStartExpedition('party')}
+                            className="p-3 rounded-xl bg-gradient-to-br from-amber-950/40 to-zinc-950 border border-amber-600/60 hover:border-amber-400 text-left transition-all hover:scale-[1.02] cursor-pointer shadow-lg"
+                          >
+                            <div className="text-sm font-bold text-amber-300">👥 Formar Grupo</div>
+                            <div className="text-[10px] text-zinc-300 pt-0.5">Desafio tático e loot ampliado</div>
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="border-t border-zinc-800 pt-2 flex justify-end">
+                        <button
+                          onClick={() => setShowExpeditionEntryModal(false)}
+                          className="px-3 py-1.5 rounded-lg text-xs text-zinc-400 hover:text-zinc-200"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                )}
+
+                {/* Catacombs Extraction & Descend Modal */}
+                {showExtractionModal && (
+                  <Dialog open={showExtractionModal} onOpenChange={setShowExtractionModal}>
+                    <DialogContent className="max-w-md bg-zinc-950/95 border-amber-500/60 text-zinc-100 shadow-[0_0_60px_rgba(245,158,11,0.3)] backdrop-blur-xl">
+                      <DialogHeader>
+                        <DialogTitle className="text-lg font-serif font-bold text-amber-300 flex items-center gap-2">
+                          <span>🚪</span>
+                          <span>Escadaria das Profundezas • Andar {dungeonExpedition?.currentFloor || 1}</span>
+                        </DialogTitle>
+                        <DialogDescription className="text-xs text-zinc-300 leading-relaxed pt-1">
+                          Você alcançou uma passagem principal. Escolha entre extrair com os espólios acumulados ou arriscar o próximo andar por recompensas lendárias.
+                        </DialogDescription>
+                      </DialogHeader>
+
+                      <div className="space-y-3 py-3">
+                        {/* Resumo de Espólios Acumulados */}
+                        <div className="p-3 rounded-xl bg-amber-950/30 border border-amber-500/40 flex items-center justify-between">
+                          <span className="text-xs font-semibold text-zinc-300">Espólios da Expedição:</span>
+                          <div className="flex items-center gap-3">
+                            <span className="text-xs font-mono font-bold text-amber-300">
+                              🪙 {dungeonExpedition?.accumulatedLoot.gold || 0} PO
+                            </span>
+                            <span className="text-xs font-mono font-bold text-emerald-300">
+                              ✨ {dungeonExpedition?.accumulatedLoot.items.length || 0} Itens
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Botões de Ação */}
+                        <div className="flex flex-col gap-2 pt-1">
+                          <button
+                            onClick={handleExtractExpedition}
+                            className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-black font-black text-xs uppercase tracking-wide shadow-lg transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2"
+                          >
+                            <span>🛡️ Extrair com Segurança (Garantir 100% dos Espólios)</span>
+                          </button>
+
+                          <button
+                            onClick={handleDescendFloor}
+                            className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-black font-black text-xs uppercase tracking-wide shadow-lg transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2"
+                          >
+                            <span>⚔️ Aprofundar para o Andar {(dungeonExpedition?.currentFloor || 1) + 1} (Mais Risco & Loot)</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="border-t border-zinc-800 pt-2 flex justify-end">
+                        <button
+                          onClick={() => setShowExtractionModal(false)}
+                          className="px-3 py-1.5 rounded-lg text-xs text-zinc-400 hover:text-zinc-200"
+                        >
+                          Continuar Explorando este Andar
+                        </button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
                 )}
               </div>
             </div>
@@ -2249,17 +4543,24 @@ export default function Game() {
                     <p className="eyebrow">LOCAL {(i + 1).toString().padStart(2, '0')}</p>
                     <h2>{l.name}</h2>
                     <p>{l.text}</p>
-                    <button
-                      disabled={busy || !owner || state!.combat || state!.location === i}
-                      className="gold-button"
-                      onClick={() =>
-                        void action({ action: 'location', location: i }).then((ok) => {
-                          if (ok) setView('Aventura');
-                        })
-                      }
-                    >
-                      {state!.location === i ? 'Você está aqui' : 'Viajar para cá'} <ChevronRight size={15} />
-                    </button>
+                    {state!.location === i ? (
+                      <span className="text-xs px-3 py-1.5 rounded-lg bg-emerald-950/80 border border-emerald-500 text-emerald-300 font-bold font-mono">
+                        📍 Localização Atual
+                      </span>
+                    ) : (
+                      <div className="flex flex-col gap-1.5">
+                        <span className="text-[11px] text-amber-300/80 font-mono">
+                          🚪 Acesso via portões e portais do mapa tático da aventura.
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setView('Aventura')}
+                          className="gold-button text-xs py-1.5 px-3 flex items-center gap-1 cursor-pointer"
+                        >
+                          <span>Ir para o Mapa Tático</span> <ChevronRight size={13} />
+                        </button>
+                      </div>
+                    )}
                   </article>
                 ))}
               </div>
@@ -2303,13 +4604,13 @@ export default function Game() {
           ) : null}
 
           {/* Footer Attribution */}
-          <footer className="mt-8 text-center text-xs text-zinc-600 border-t border-zinc-900 pt-3">
-            This work includes material from the System Reference Document 5.2.1 (“SRD 5.2.1”) by Wizards of the Coast LLC. Licenciado sob CC BY 4.0.
-          </footer>
+          {view !== 'Aventura' && <footer className="mt-8 text-center text-xs text-zinc-600 border-t border-zinc-900 pt-3">
+            This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards of the Coast LLC. Licenciado sob CC BY 4.0.
+          </footer>}
         </section>
 
         {/* Mobile Navigation Bar */}
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-[#121612]/95 backdrop-blur-md border-t border-zinc-800 flex items-center justify-around py-1.5 px-2 shadow-2xl">
+        <nav className={`${view === 'Aventura' ? 'hidden' : 'flex'} md:hidden fixed bottom-0 left-0 right-0 z-30 bg-[#121612]/95 backdrop-blur-md border-t border-zinc-800 flex items-center justify-around py-1.5 px-2 shadow-2xl`}>
           {navigation.map(({ icon: Icon, name }) => (
             <button
               key={name}
@@ -2433,7 +4734,7 @@ export default function Game() {
                   className="w-full flex items-center justify-center gap-2 p-2.5 rounded-xl bg-red-950/80 hover:bg-red-900 border border-red-600/70 text-red-200 text-xs font-bold transition-all shadow-md active:scale-95"
                 >
                   <Trash2 size={14} />
-                  <span>Wipe: Limpar Saves Antigos e Reiniciar Campanha</span>
+                  <span>Começar outra campanha</span>
                 </button>
               </div>
             </>
@@ -2520,7 +4821,8 @@ export default function Game() {
                     onClick={async () => {
                       const target = interactingPlayer;
                       setInteractingPlayer(null);
-                      await action({ action: 'partyInvite', character: selected, targetCharId: target.id });
+                      const senderCharId = active?.id || myHeroes[0]?.id || selected;
+                      await action({ action: 'partyInvite', character: senderCharId, targetCharId: target.id });
                     }}
                     className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-emerald-600 via-green-500 to-emerald-600 hover:from-emerald-500 hover:to-green-400 text-black font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95 cursor-pointer"
                   >
@@ -2562,22 +4864,6 @@ export default function Game() {
             </div>
           </DialogContent>
         </Dialog>
-      )}
-
-      {/* 5e Character Creator & Builder Modal */}
-      {showCharacterCreator && (
-        <CharacterCreator
-          isOpen={showCharacterCreator}
-          onClose={() => setShowCharacterCreator(false)}
-          onSave={async (newHero) => {
-            const ok = await action({ action: 'character', value: newHero });
-            if (ok) {
-              setShowCharacterCreator(false);
-              setSelected(newHero.id);
-            }
-          }}
-          busy={busy}
-        />
       )}
     </SidebarProvider>
   );
@@ -2886,7 +5172,7 @@ function Library() {
         ))}
       </div>
       {!loading && !items.length && (
-        <div className="panel">Nenhum resultado. Tente um termo em inglês, como “concentration” ou “dragon”.</div>
+        <div className="panel">Nenhum resultado. Tente um termo em inglês, como "concentration" ou "dragon".</div>
       )}
       <Dialog open={!!page} onOpenChange={(v) => { if (!v) setPage(null); }}>
         <DialogContent className="rule-dialog">

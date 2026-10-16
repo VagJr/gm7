@@ -1,5 +1,6 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { issueSession, verifySession } from '@/lib/session-token';
 
 export type ChatGPTUser = {
   userId: string;
@@ -22,65 +23,15 @@ const CALLBACK_PATH = "/callback";
 
 export async function getChatGPTUser(): Promise<ChatGPTUser | null> {
   const requestHeaders = await headers();
-  const userId = requestHeaders.get(USER_ID_HEADER);
-  const email = requestHeaders.get(USER_EMAIL_HEADER);
-  if (userId && email) {
-    const encodedFullName = requestHeaders.get(USER_FULL_NAME_HEADER);
-    const fullName =
-      encodedFullName &&
-      requestHeaders.get(USER_FULL_NAME_ENCODING_HEADER) === PERCENT_ENCODED_UTF8
-        ? safeDecodeURIComponent(encodedFullName)
-        : null;
-
-    return {
-      userId,
-      displayName: fullName ?? email,
-      email,
-      fullName,
-    };
-  }
-
-  // Server-generated anonymous session identity per browser/client via Cookie
-  const rawCookie = requestHeaders.get("cookie") || "";
-  const match = /lume_session_id=([^;]+)/.exec(rawCookie);
-
-  if (match && match[1]?.trim()) {
-    const sessionId = decodeURIComponent(match[1].trim());
-    return {
-      userId: sessionId,
-      displayName: `Aventureiro ${sessionId.slice(-4).toUpperCase()}`,
-      email: `${sessionId}@lume.local`,
-      fullName: `Aventureiro ${sessionId.slice(-4).toUpperCase()}`,
-      isNewSession: false
-    };
-  }
-
-  // Legacy or test auth_session fallback
-  const authMatch = /auth_session=([^;]+)/.exec(rawCookie);
-  if (authMatch && authMatch[1]?.trim()) {
-    try {
-      const decoded = JSON.parse(Buffer.from(decodeURIComponent(authMatch[1].trim()), 'base64').toString('utf-8'));
-      if (decoded?.userId) {
-        return {
-          userId: String(decoded.userId),
-          displayName: String(decoded.displayName || 'Aventureiro'),
-          email: `${decoded.userId}@lume.local`,
-          fullName: String(decoded.displayName || 'Aventureiro'),
-          isNewSession: false
-        };
-      }
-    } catch {}
-  }
-
-  // Generate unique anonymous ID for this new browser session (Server Authoritative)
-  const newId = `anon_${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
+  const raw = requestHeaders.get('cookie') || '';
+  const token = /(?:^|;\s*)dd_session=([^;]+)/.exec(raw)?.[1];
+  const verified = token ? verifySession(token) : null;
+  const session = verified ? { id: verified, token: '' } : issueSession();
+  const label = `Aventureiro ${session.id.slice(-4).toUpperCase()}`;
   return {
-    userId: newId,
-    displayName: `Aventureiro ${newId.slice(-4).toUpperCase()}`,
-    email: `${newId}@lume.local`,
-    fullName: `Aventureiro ${newId.slice(-4).toUpperCase()}`,
-    isNewSession: true,
-    cookieHeaderValue: `lume_session_id=${encodeURIComponent(newId)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000`
+    userId: session.id, displayName: label, email: `${session.id}@dragons.local`, fullName: label,
+    isNewSession: !verified,
+    cookieHeaderValue: verified ? undefined : `dd_session=${session.token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`
   };
 }
 

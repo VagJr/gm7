@@ -1,0 +1,5 @@
+{
+  "mode": "built-in image_gen",
+  "output": "public/maps/vila-v2.webp",
+  "prompt": "Use case: precise-object-edit. Edit target: this existing fantasy village tactical map. Preserve EXACT positions, footprints, silhouettes and dimensions of every house, tree, road, river, bridge, dock, statue and wall so the existing game's collision geometry still matches. Preserve the same strictly overhead camera and full-map framing. Remove ALL visible grid lines over the entire map, remove the compass rose in the upper left, remove the parchment scale/legend in the lower left and replace those small annotation areas with seamlessly matching forest/ground. No text, no labels, no compass, no border, no scale, no grid. Retain the rich medieval village architecture and premium hand-painted realistic videogame detail. Warm copper roof tiles, weathered stone paths, emerald foliage, deep teal river. Make surfaces crisp and beautifully physically lit, suitable as a terrain layer underneath animated 3D miniature tokens. Do not add, remove or reposition gameplay landmarks or buildings. Original layout must stay intact."
+}

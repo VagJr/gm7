@@ -99,7 +99,7 @@ export function MobileDrawer({
             </div>
             <div>
               <h2 className="font-serif font-bold text-amber-200 text-sm leading-tight">
-                CRÔNICAS DO VAZIO
+                DRAGONS AND DUNGEONS
               </h2>
               <span className="text-[10px] text-zinc-400 font-mono tracking-widest uppercase">
                 D&D 5e • Mobile Edition

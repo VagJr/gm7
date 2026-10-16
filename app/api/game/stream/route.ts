@@ -1,98 +1,199 @@
-import { NextRequest } from 'next/server';
-import { database } from '@/lib/room-db';
-import { roomEventBus, type RoomUpdatePayload } from '@/lib/room-events';
+import {
+  NextRequest
+} from 'next/server';
 
-export const dynamic = 'force-dynamic';
-export const runtime = 'nodejs';
+import {
+  getChatGPTUser
+} from '@/app/chatgpt-auth';
 
-export async function GET(req: NextRequest) {
-  const roomId = req.nextUrl.searchParams.get('room') || 'mmo-world-village';
+import {
+  database
+} from '@/lib/room-db';
 
-  // Verify room exists in DB
-  const db = database();
-  const room = await db.prepare('SELECT * FROM rooms WHERE id=?').bind(roomId).first<any>();
-  if (!room) {
-    return new Response(JSON.stringify({ error: 'Mesa não encontrada' }), {
-      status: 404,
-      headers: { 'Content-Type': 'application/json' }
-    });
+import {
+  roomEventBus,
+  type RoomUpdatePayload
+} from '@/lib/room-events';
+
+export const dynamic =
+  'force-dynamic';
+
+export { openRoomStream as GET } from '@/lib/room-stream';
+export const maxDuration = 300;
+
+async function legacyProcessOnlyStream(
+  req: NextRequest
+) {
+  const user =
+    await getChatGPTUser();
+
+  if (!user) {
+    return new Response(
+      'Unauthorized',
+      {
+        status: 401
+      }
+    );
   }
 
-  const encoder = new TextEncoder();
-  let keepAliveTimer: NodeJS.Timeout | null = null;
-  let eventListener: ((data: RoomUpdatePayload) => void) | null = null;
+  const {
+    searchParams
+  } =
+    new URL(
+      req.url
+    );
 
-  const stream = new ReadableStream({
-    start(controller) {
-      // 1. Send initial handshake and current state
-      try {
-        const initialState = JSON.parse(room.state);
-        const initPayload = JSON.stringify({
-          type: 'init',
-          roomId,
-          version: room.version,
-          state: initialState,
-          timestamp: Date.now()
-        });
-        controller.enqueue(encoder.encode(`event: init\ndata: ${initPayload}\n\n`));
-      } catch (err) {
-        console.warn('SSE initial state parse notice:', err);
+  const roomId =
+    searchParams.get(
+      'room'
+    ) ||
+    'mmo-world-village';
+
+  const db =
+    await database();
+
+  const membership =
+    await db
+      .prepare(
+        'SELECT room FROM members WHERE room=? AND user=?'
+      )
+      .bind(
+        roomId,
+        user.userId
+      )
+      .first<{
+        room: string;
+      }>();
+
+  if (!membership) {
+    return new Response(
+      'Forbidden',
+      {
+        status: 403
       }
+    );
+  }
 
-      // 2. Subscribe to real-time room events
-      eventListener = (payload: RoomUpdatePayload) => {
-        try {
-          const msg = JSON.stringify({
-            type: 'update',
-            ...payload
-          });
-          controller.enqueue(encoder.encode(`event: update\ndata: msg\n\n`.replace('data: msg', `data: ${msg}`)));
-        } catch {
-          // Stream might be closed
-        }
-      };
+  const encoder =
+    new TextEncoder();
 
-      roomEventBus.on(`room:${roomId}`, eventListener);
+  let cleanup:
+    | (() => void)
+    | null = null;
 
-      // 3. Heartbeat ping every 15s to keep connection alive
-      keepAliveTimer = setInterval(() => {
-        try {
-          controller.enqueue(encoder.encode(`: ping\n\n`));
-        } catch {
-          if (keepAliveTimer) clearInterval(keepAliveTimer);
-        }
-      }, 15000);
-    },
-    cancel() {
-      if (eventListener) {
-        roomEventBus.off(`room:${roomId}`, eventListener);
-        eventListener = null;
+  const stream =
+    new ReadableStream({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            'event: connected\n' +
+            'data: ' +
+            JSON.stringify({
+              roomId,
+              timestamp:
+                Date.now()
+            }) +
+            '\n\n'
+          )
+        );
+
+        const onUpdate =
+          (
+            payload:
+              RoomUpdatePayload
+          ) => {
+            try {
+              controller.enqueue(
+                encoder.encode(
+                  'event: update\n' +
+                  'data: ' +
+                  JSON.stringify(
+                    payload
+                  ) +
+                  '\n\n'
+                )
+              );
+            } catch {
+              // stream closed
+            }
+          };
+
+        const eventName =
+          `room:${roomId}`;
+
+        roomEventBus.on(
+          eventName,
+          onUpdate
+        );
+
+        const pingTimer =
+          setInterval(
+            () => {
+              try {
+                controller.enqueue(
+                  encoder.encode(
+                    ': ping\n\n'
+                  )
+                );
+              } catch {
+                clearInterval(
+                  pingTimer
+                );
+              }
+            },
+            15000
+          );
+
+        cleanup = () => {
+          clearInterval(
+            pingTimer
+          );
+
+          roomEventBus.off(
+            eventName,
+            onUpdate
+          );
+        };
+      },
+
+      cancel() {
+        cleanup?.();
       }
-      if (keepAliveTimer) {
-        clearInterval(keepAliveTimer);
-        keepAliveTimer = null;
-      }
-    }
-  });
+    });
 
-  // Handle client abort
-  req.signal.addEventListener('abort', () => {
-    if (eventListener) {
-      roomEventBus.off(`room:${roomId}`, eventListener);
-      eventListener = null;
+  req.signal.addEventListener(
+    'abort',
+    () => {
+      cleanup?.();
     }
-    if (keepAliveTimer) {
-      clearInterval(keepAliveTimer);
-      keepAliveTimer = null;
-    }
-  });
+  );
 
-  return new Response(stream, {
-    headers: {
-      'Content-Type': 'text/event-stream; charset=utf-8',
-      'Cache-Control': 'no-cache, no-transform, must-revalidate',
-      'Connection': 'keep-alive',
-      'X-Accel-Buffering': 'no'
+  const headers =
+    new Headers({
+      'Content-Type':
+        'text/event-stream',
+      'Cache-Control':
+        'no-cache, no-transform',
+      Connection:
+        'keep-alive',
+      'X-Accel-Buffering':
+        'no'
+    });
+
+  if (
+    user.cookieHeaderValue
+  ) {
+    headers.set(
+      'Set-Cookie',
+      user.cookieHeaderValue
+    );
+  }
+
+  return new Response(
+    stream,
+    {
+      status: 200,
+      headers
     }
-  });
+  );
 }

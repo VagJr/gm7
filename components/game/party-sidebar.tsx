@@ -360,10 +360,10 @@ export function PartySidebar({
         <div className="flex items-center justify-between w-full">
           <div className="flex flex-col">
             <h1 className="crpg-title-emboss text-base sm:text-lg tracking-wider leading-none m-0">
-              DUNGEONS
+              DRAGONS
             </h1>
             <span className="crpg-title-emboss text-xs sm:text-sm tracking-[0.2em] text-amber-200/90 leading-tight">
-              & MASTERS
+              AND DUNGEONS
             </span>
           </div>
           <div className="flex items-center gap-1">
@@ -505,9 +505,9 @@ export function PartySidebar({
           >
             <div className="flex items-center gap-2">
               <div className="w-5 h-5 rounded-full bg-indigo-700 text-white flex items-center justify-center text-[9px] font-black">
-                MA
+                {party.find(hero => hero.id === activeHeroId)?.name.slice(0, 2).toUpperCase() || 'AV'}
               </div>
-              <span className="font-semibold text-slate-200 text-xs">MadiFinley</span>
+              <span className="font-semibold text-slate-200 text-xs">{party.find(hero => hero.id === activeHeroId)?.name || 'Aventureiro'}</span>
             </div>
             <ChevronDown size={14} className="text-slate-400" />
           </button>
@@ -583,7 +583,7 @@ export function PartySidebar({
                 className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs text-red-400 hover:bg-red-950/60 flex items-center gap-2"
               >
                 <Trash2 size={13} className="text-red-400" />
-                <span>Reiniciar Mesa (Wipe)</span>
+                <span>Começar outra campanha</span>
               </button>
             </div>
           )}

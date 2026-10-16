@@ -1,7 +1,7 @@
 // components/game/character-creator.tsx
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Shield,
   Swords,
@@ -27,8 +27,25 @@ import {
   signed,
   newCharacter,
   calculateEquippedStats,
+  getSpellSlotsForClass,
+  POINT_BUY_COSTS,
+  TOTAL_POINT_BUY_POINTS,
+  calculatePointBuyScoreCost,
+  calculateTotalPointBuyCost,
   type Character
 } from '@/lib/game-engine';
+
+import {
+  SpellSelectionPanel
+} from '@/components/game/spell-selection-panel';
+
+import {
+  buildLegacySpellString,
+  validateInitialSpellSelection
+} from '@/lib/srd-spellbook';
+
+import { ORIGIN_BACKGROUNDS, defaultOriginBonus, speciesSpeed } from '@/lib/character-origins';
+import { tokenArt } from '@/lib/token-art';
 
 interface CharacterCreatorProps {
   isOpen: boolean;
@@ -38,17 +55,17 @@ interface CharacterCreatorProps {
 }
 
 const SPECIES_TRAITS: Record<string, { desc: string; statsBonus: [number, number, number, number, number, number]; speed: number }> = {
-  Humano: { desc: '+1 em todos os atributos. Versátil, ambicioso e determinado.', statsBonus: [1, 1, 1, 1, 1, 1], speed: 9 },
-  Elfo: { desc: '+2 DES, +1 INT. Visão no Escuro, sentidos aguçados e imunidade a sono mágico.', statsBonus: [0, 2, 0, 1, 0, 0], speed: 9 },
-  Anão: { desc: '+2 CON, +1 FOR. Visão no Escuro, resiliência contra venenos e +1 PV por nível.', statsBonus: [1, 0, 2, 0, 0, 0], speed: 7.5 },
-  Pequenino: { desc: '+2 DES, +1 CAR. Sortudo (rerrola 1 no d20) e ágil entre os inimigos.', statsBonus: [0, 2, 0, 0, 0, 1], speed: 7.5 },
-  Halfling: { desc: '+2 DES, +1 CAR. Sortudo (rerrola 1 no d20) e ágil entre os inimigos.', statsBonus: [0, 2, 0, 0, 0, 1], speed: 7.5 },
-  Draconato: { desc: '+2 FOR, +1 CAR. Ancestralidade dracônica com arma de sopro elemental.', statsBonus: [2, 0, 0, 0, 0, 1], speed: 9 },
-  Tiferino: { desc: '+2 CAR, +1 INT. Visão no Escuro e resistência inerente a chamas infernais.', statsBonus: [0, 0, 0, 1, 0, 2], speed: 9 },
-  Tiefling: { desc: '+2 CAR, +1 INT. Visão no Escuro e resistência inerente a chamas infernais.', statsBonus: [0, 0, 0, 1, 0, 2], speed: 9 },
-  Gnomo: { desc: '+2 INT, +1 CON. Astúcia Gnômica (vantagem em salvaguardas mentais) e Visão no Escuro.', statsBonus: [0, 0, 1, 2, 0, 0], speed: 7.5 },
-  Golias: { desc: '+2 FOR, +1 CON. Constituição Poderosa (capacidade de carga dupla) e Resguardo de Pedra.', statsBonus: [2, 0, 1, 0, 0, 0], speed: 9 },
-  Orc: { desc: '+2 FOR, +1 CON. Agressividade feroz e Resistência Implacável (cai a 1 PV ao invés de 0).', statsBonus: [2, 0, 1, 0, 0, 0], speed: 9 }
+  Humano: { desc: 'Versátil, ambicioso e determinado.', statsBonus: [1, 1, 1, 1, 1, 1], speed: 9 },
+  Elfo: { desc: 'Visão no Escuro, sentidos aguçados e imunidade a sono mágico.', statsBonus: [0, 2, 0, 1, 0, 0], speed: 9 },
+  Anão: { desc: 'Visão no Escuro, resiliência contra venenos e +1 PV por nível.', statsBonus: [1, 0, 2, 0, 0, 0], speed: 7.5 },
+  Pequenino: { desc: 'Sortudo (rerrola 1 no d20) e ágil entre os inimigos.', statsBonus: [0, 2, 0, 0, 0, 1], speed: 7.5 },
+  Halfling: { desc: 'Sortudo (rerrola 1 no d20) e ágil entre os inimigos.', statsBonus: [0, 2, 0, 0, 0, 1], speed: 7.5 },
+  Draconato: { desc: 'Ancestralidade dracônica com arma de sopro elemental.', statsBonus: [2, 0, 0, 0, 0, 1], speed: 9 },
+  Tiferino: { desc: 'Visão no Escuro e resistência inerente a chamas infernais.', statsBonus: [0, 0, 0, 1, 0, 2], speed: 9 },
+  Tiefling: { desc: 'Visão no Escuro e resistência inerente a chamas infernais.', statsBonus: [0, 0, 0, 1, 0, 2], speed: 9 },
+  Gnomo: { desc: 'Astúcia Gnômica (vantagem em salvaguardas mentais) e Visão no Escuro.', statsBonus: [0, 0, 1, 2, 0, 0], speed: 7.5 },
+  Golias: { desc: 'Constituição Poderosa (capacidade de carga dupla) e Resguardo de Pedra.', statsBonus: [2, 0, 1, 0, 0, 0], speed: 9 },
+  Orc: { desc: 'Agressividade feroz e Resistência Implacável (cai a 1 PV ao invés de 0).', statsBonus: [2, 0, 1, 0, 0, 0], speed: 9 }
 };
 
 const CLASS_CONFIGS: Record<string, {
@@ -239,26 +256,56 @@ const CLASS_CONFIGS: Record<string, {
 const STANDARD_ARRAY = [15, 14, 13, 12, 10, 8];
 
 export function CharacterCreator({ isOpen, onClose, onSave, busy }: CharacterCreatorProps) {
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
+  const contentRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { contentRef.current?.scrollTo({ top: 0 }); }, [step]);
 
   // Character Draft State
   const [name, setName] = useState('');
   const [chosenSpecies, setChosenSpecies] = useState('Humano');
   const [chosenClass, setChosenClass] = useState('Guerreiro');
   const [background, setBackground] = useState('Soldado');
+  const [originBonuses, setOriginBonuses] = useState(defaultOriginBonus('Soldado'));
+  const [portrait, setPortrait] = useState(0);
   const [baseStats, setBaseStats] = useState<number[]>([15, 14, 13, 12, 10, 8]);
   const [selectedSkills, setSelectedSkills] = useState<string[]>(['Atletismo', 'Intimidação']);
   const [backstory, setBackstory] = useState('');
+
+  const [
+    selectedCantrips,
+    setSelectedCantrips
+  ] =
+    useState<string[]>([]);
+
+  const [
+    selectedPreparedSpells,
+    setSelectedPreparedSpells
+  ] =
+    useState<string[]>([]);
+
+  const [
+    selectedSpellbook,
+    setSelectedSpellbook
+  ] =
+    useState<string[]>([]);
 
   if (!isOpen) return null;
 
   const speciesInfo = SPECIES_TRAITS[chosenSpecies] || SPECIES_TRAITS.Humano;
   const classInfo = CLASS_CONFIGS[chosenClass] || CLASS_CONFIGS.Guerreiro;
 
+  const spellSelectionValidation =
+    validateInitialSpellSelection(
+      chosenClass,
+      selectedCantrips,
+      selectedPreparedSpells,
+      selectedSpellbook
+    );
+
   // Final attributes with racial bonus
-  const finalStats = baseStats.map((val, idx) => val + speciesInfo.statsBonus[idx]);
+  const finalStats = baseStats.map((val, idx) => val + originBonuses[idx]);
   const conMod = mod(finalStats[2]);
-  const maxHp = classInfo.hitDie + conMod;
+  const maxHp = classInfo.hitDie + conMod + (chosenSpecies === 'Anão' ? 1 : 0);
 
   const handleToggleSkill = (skName: string) => {
     if (selectedSkills.includes(skName)) {
@@ -268,6 +315,33 @@ export function CharacterCreator({ isOpen, onClose, onSave, busy }: CharacterCre
         setSelectedSkills([...selectedSkills, skName]);
       }
     }
+  };
+
+  const currentPointCost = calculateTotalPointBuyCost(baseStats);
+  const remainingPoints = TOTAL_POINT_BUY_POINTS - currentPointCost;
+  const isStep2Valid = remainingPoints >= 0 && baseStats.every((v) => v >= 8 && v <= 15);
+
+  const handleIncreaseStat = (idx: number) => {
+    const currentVal = baseStats[idx];
+    if (currentVal >= 15) return;
+    const nextVal = currentVal + 1;
+    const costDiff = calculatePointBuyScoreCost(nextVal) - calculatePointBuyScoreCost(currentVal);
+    if (remainingPoints < costDiff) return;
+    const next = [...baseStats];
+    next[idx] = nextVal;
+    setBaseStats(next);
+  };
+
+  const handleDecreaseStat = (idx: number) => {
+    const currentVal = baseStats[idx];
+    if (currentVal <= 8) return;
+    const next = [...baseStats];
+    next[idx] = currentVal - 1;
+    setBaseStats(next);
+  };
+
+  const handleApplyPreset = (stats: number[]) => {
+    setBaseStats([...stats]);
   };
 
   const handleRollRandomStats = () => {
@@ -282,6 +356,10 @@ export function CharacterCreator({ isOpen, onClose, onSave, busy }: CharacterCre
   };
 
   const handleFinish = async () => {
+    if (!isStep2Valid) {
+      alert('Distribuição de atributos excede o limite de 27 pontos ou possui atributos base fora do intervalo 8 a 15 permitido pelas regras oficiais de D&D 5e.');
+      return;
+    }
     const heroName = name.trim() || `Herói de ${chosenSpecies}`;
     const baseHero: Character = {
       ...newCharacter(),
@@ -290,16 +368,43 @@ export function CharacterCreator({ isOpen, onClose, onSave, busy }: CharacterCre
       className: chosenClass,
       species: chosenSpecies,
       background,
+      originBonuses,
+      portrait,
       level: 1,
       stats: finalStats as [number, number, number, number, number, number],
       skills: selectedSkills,
       saves: classInfo.saves,
       hp: maxHp,
       maxHp,
-      speed: speciesInfo.speed,
-      slots: classInfo.slots,
+      speed: speciesSpeed(chosenSpecies),
+      slots:
+        getSpellSlotsForClass(
+          chosenClass,
+          1
+        ),
+
+      usedSlots:
+        [0,0,0,0,0,0,0,0,0],
       features: `${speciesInfo.desc}\n\n${classInfo.features}`,
-      spells: classInfo.spells || '',
+      knownCantrips:
+        selectedCantrips,
+
+      preparedSpells:
+        selectedPreparedSpells,
+
+      spellbook:
+        selectedSpellbook,
+
+      spellSelectionVersion:
+        1,
+
+      spells:
+        buildLegacySpellString(
+          selectedCantrips,
+          selectedPreparedSpells,
+          chosenClass,
+          1
+        ),
       spellAbility: classInfo.spellAbility !== undefined ? classInfo.spellAbility : 3,
       notes: backstory,
       equipment: {
@@ -311,22 +416,22 @@ export function CharacterCreator({ isOpen, onClose, onSave, busy }: CharacterCre
 
     const calculatedHero = calculateEquippedStats(baseHero);
     await onSave(calculatedHero);
-    onClose();
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-2 sm:p-4 animate-fade-in select-none">
+    <div className="character-creation fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-2 sm:p-4 animate-fade-in select-none">
       <div className="relative w-full max-w-3xl bg-zinc-950 border-2 border-amber-900/70 rounded-3xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden">
         {/* Wizard Header */}
         <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3 bg-gradient-to-r from-zinc-950 to-zinc-900">
           <div className="flex items-center gap-2">
             <User size={20} className="text-amber-400" />
             <h2 className="font-serif font-bold text-amber-200 text-base sm:text-lg">
-              Forjar Novo Aventureiro • Passo {step} de 4
+              Forjar Novo Aventureiro • Passo {step} de 5
             </h2>
           </div>
           <button
             onClick={onClose}
+            aria-label="Fechar criação de personagem"
             className="p-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-zinc-700 transition-colors"
           >
             <X size={18} />
@@ -339,7 +444,8 @@ export function CharacterCreator({ isOpen, onClose, onSave, busy }: CharacterCre
             { s: 1, label: 'Identidade & Classe' },
             { s: 2, label: 'Atributos' },
             { s: 3, label: 'Perícias' },
-            { s: 4, label: 'Resumo & Equipamento' }
+            { s: 4, label: 'Magias' },
+            { s: 5, label: 'Resumo' }
           ].map((item) => (
             <button
               key={item.s}
@@ -361,7 +467,7 @@ export function CharacterCreator({ isOpen, onClose, onSave, busy }: CharacterCre
         </div>
 
         {/* Wizard Content Body */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 scrollbar-thin">
+        <div ref={contentRef} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 scrollbar-thin">
           {step === 1 && (
             <div className="space-y-4 animate-slide-up">
               <div>
@@ -403,6 +509,8 @@ export function CharacterCreator({ isOpen, onClose, onSave, busy }: CharacterCre
                 </div>
               </div>
 
+              <div><span className="block text-xs uppercase tracking-wider text-zinc-400 font-bold mb-2">Sua miniatura</span><div className="dd-portrait-grid">{Array.from({ length: 24 }, (_, i) => <button type="button" key={i} className={portrait === i ? 'is-selected' : ''} aria-label={`Miniatura ${i + 1}`} aria-pressed={portrait === i} onClick={() => setPortrait(i)}><img src={tokenArt(i)} alt="" loading="lazy" /></button>)}</div></div>
+
               {/* Class Selection */}
               <div>
                 <label className="block text-xs uppercase tracking-wider text-zinc-400 font-bold mb-2">
@@ -414,7 +522,29 @@ export function CharacterCreator({ isOpen, onClose, onSave, busy }: CharacterCre
                       key={cl}
                       onClick={() => {
                         setChosenClass(cl);
-                        setSelectedSkills(CLASS_CONFIGS[cl].availableSkills.slice(0, CLASS_CONFIGS[cl].skillsCount));
+
+                        setSelectedSkills(
+                          CLASS_CONFIGS[
+                            cl
+                          ].availableSkills.slice(
+                            0,
+                            CLASS_CONFIGS[
+                              cl
+                            ].skillsCount
+                          )
+                        );
+
+                        setSelectedCantrips(
+                          []
+                        );
+
+                        setSelectedPreparedSpells(
+                          []
+                        );
+
+                        setSelectedSpellbook(
+                          []
+                        );
                       }}
                       className={`p-3 rounded-xl border text-left transition-all ${
                         chosenClass === cl
@@ -438,84 +568,175 @@ export function CharacterCreator({ isOpen, onClose, onSave, busy }: CharacterCre
 
           {step === 2 && (
             <div className="space-y-4 animate-slide-up">
-              <div className="flex items-center justify-between">
+              {/* Header with Title and Point Buy Budget Counter */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 bg-zinc-900/80 border border-amber-900/60 rounded-2xl">
                 <div>
-                  <h3 className="text-sm font-bold text-zinc-200">Atributos Primários (D&D 5e SRD)</h3>
+                  <h3 className="text-sm font-bold text-amber-200 flex items-center gap-1.5">
+                    <Sparkles size={16} className="text-amber-400" />
+                    Atributos • Compra de Pontos (D&D 5e)
+                  </h3>
                   <p className="text-xs text-zinc-400">
-                    Bônus da espécie {chosenSpecies} já somados automaticamente.
+                    Bônus de {background} somados. Base de 8 a 15, com até 27 pontos (SRD 5.2.1).
                   </p>
                 </div>
-                <div className="flex gap-2">
+                <div className={`px-3 py-1.5 rounded-xl font-mono text-xs font-bold flex items-center justify-between sm:justify-end gap-2 border self-start sm:self-auto ${
+                  remainingPoints === 0
+                    ? 'bg-emerald-950/70 border-emerald-500/60 text-emerald-300'
+                    : remainingPoints > 0
+                    ? 'bg-amber-950/70 border-amber-500/60 text-amber-300'
+                    : 'bg-red-950/70 border-red-500/60 text-red-300'
+                }`}>
+                  <span className="text-[11px] uppercase tracking-wider text-zinc-300">Pontos Restantes:</span>
+                  <span className="text-sm font-black">{remainingPoints} / 27</span>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl border border-zinc-700 bg-zinc-900 space-y-2"><label className="block text-xs font-bold" htmlFor="hero-background">Antecedente</label><select id="hero-background" value={background} onChange={e => { setBackground(e.target.value); setOriginBonuses(defaultOriginBonus(e.target.value)); }} className="bg-zinc-950 rounded-lg p-2 w-full">{Object.keys(ORIGIN_BACKGROUNDS).map(b => <option key={b}>{b}</option>)}</select><p className="text-xs text-zinc-400">Escolha +2 e +1 em atributos diferentes, ou +1 nos três atributos do antecedente.</p><div className="flex gap-2 flex-wrap">{[2,1].map(amount => <label className="text-xs" key={amount}>+{amount} <select aria-label={`Bônus de antecedente +${amount}`} value={originBonuses.findIndex(n => n === amount)} onChange={e => { const index = Number(e.target.value); const next = Array(6).fill(0); const other = originBonuses.findIndex(n => n === (amount === 2 ? 1 : 2)); const alternate = ORIGIN_BACKGROUNDS[background].find(i => i !== index)!; next[index] = amount; next[other >= 0 && other !== index ? other : alternate] = amount === 2 ? 1 : 2; setOriginBonuses(next); }} className="bg-zinc-950 rounded-lg p-2"><option value={-1} disabled>Escolha</option>{ORIGIN_BACKGROUNDS[background].map(i => <option key={i} value={i}>{['FOR','DES','CON','INT','SAB','CAR'][i]}</option>)}</select></label>)}<button type="button" className="border border-zinc-600 rounded-lg px-3 text-xs" onClick={() => setOriginBonuses(Array.from({ length: 6 }, (_,i) => ORIGIN_BACKGROUNDS[background].includes(i) ? 1 : 0))}>+1 nos três</button></div></div>
+
+              {/* Quick Preset Buttons (Standard Array & Class Archetypes) */}
+              <div className="space-y-1">
+                <span className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider block">
+                  Distribuição Rápida (Exatamente 27 Pontos)
+                </span>
+                <div className="flex flex-wrap gap-1.5 text-xs">
                   <button
-                    onClick={() => setBaseStats([15, 14, 13, 12, 10, 8])}
-                    className="text-xs px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-700 rounded-lg transition-colors"
+                    type="button"
+                    onClick={() => handleApplyPreset([15, 14, 13, 12, 10, 8])}
+                    className="px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 text-zinc-200 border border-zinc-700 rounded-lg transition-colors font-medium"
+                    title="Matriz Padrão clássica D&D 5e: 15, 14, 13, 12, 10, 8"
                   >
-                    Padrão
+                    Matriz Padrão [15,14,13,12,10,8]
                   </button>
                   <button
-                    onClick={handleRollRandomStats}
-                    className="text-xs px-2.5 py-1 bg-amber-950/60 hover:bg-amber-900/60 text-amber-300 border border-amber-700/60 rounded-lg flex items-center gap-1 transition-colors"
+                    type="button"
+                    onClick={() => handleApplyPreset([15, 13, 14, 8, 12, 10])}
+                    className="px-2 py-1 bg-zinc-900 hover:bg-zinc-800 text-amber-300 border border-zinc-700 rounded-lg transition-colors text-[11px]"
+                    title="Foco em Força e Constituição (Guerreiro / Bárbaro / Paladino)"
                   >
-                    <Dices size={13} /> Rolar 4d6
+                    Físico (FOR)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleApplyPreset([10, 15, 14, 12, 13, 8])}
+                    className="px-2 py-1 bg-zinc-900 hover:bg-zinc-800 text-amber-300 border border-zinc-700 rounded-lg transition-colors text-[11px]"
+                    title="Foco em Destreza e Agilidade (Ladino / Patrulheiro / Monge)"
+                  >
+                    Ágil (DES)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleApplyPreset([8, 14, 13, 15, 12, 10])}
+                    className="px-2 py-1 bg-zinc-900 hover:bg-zinc-800 text-amber-300 border border-zinc-700 rounded-lg transition-colors text-[11px]"
+                    title="Foco em Intelecto e Magia (Mago)"
+                  >
+                    Mental (INT)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleApplyPreset([12, 10, 14, 8, 15, 13])}
+                    className="px-2 py-1 bg-zinc-900 hover:bg-zinc-800 text-amber-300 border border-zinc-700 rounded-lg transition-colors text-[11px]"
+                    title="Foco em Sabedoria e Fé (Clérigo / Druida)"
+                  >
+                    Divino (SAB)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleApplyPreset([8, 14, 13, 10, 12, 15])}
+                    className="px-2 py-1 bg-zinc-900 hover:bg-zinc-800 text-amber-300 border border-zinc-700 rounded-lg transition-colors text-[11px]"
+                    title="Foco em Carisma e Presença (Bardo / Feiticeiro / Bruxo)"
+                  >
+                    Carisma (CAR)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleApplyPreset([8, 8, 8, 8, 8, 8])}
+                    className="px-2 py-1 bg-zinc-900/60 hover:bg-zinc-800 text-zinc-400 border border-zinc-800 rounded-lg transition-colors text-[11px]"
+                    title="Resetar todos os atributos base para 8 (27 pontos livres)"
+                  >
+                    Resetar (8)
                   </button>
                 </div>
               </div>
 
+              {/* 6 Attribute Cards */}
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 {abilities.map((abName, idx) => {
                   const baseVal = baseStats[idx];
-                  const racial = speciesInfo.statsBonus[idx];
+                  const racial = originBonuses[idx];
                   const total = baseVal + racial;
                   const m = mod(total);
+                  const costCurrent = POINT_BUY_COSTS[baseVal] ?? 0;
+                  const incCost = baseVal < 15 ? (POINT_BUY_COSTS[baseVal + 1] - POINT_BUY_COSTS[baseVal]) : 0;
+                  const canIncrease = baseVal < 15 && remainingPoints >= incCost;
+                  const canDecrease = baseVal > 8;
 
                   return (
                     <div
                       key={abName}
-                      className="p-3 rounded-2xl bg-zinc-900/80 border border-zinc-800 flex flex-col items-center gap-1 shadow-md"
+                      className="p-3 rounded-2xl bg-zinc-900/80 border border-zinc-800 flex flex-col items-center gap-1 shadow-md hover:border-zinc-700 transition-colors"
                     >
                       <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider">
                         {abName}
                       </span>
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={() => {
-                            const next = [...baseStats];
-                            next[idx] = Math.max(6, next[idx] - 1);
-                            setBaseStats(next);
-                          }}
-                          className="w-6 h-6 rounded bg-zinc-800 text-zinc-300 hover:bg-zinc-700 flex items-center justify-center font-bold"
+                          type="button"
+                          disabled={!canDecrease}
+                          onClick={() => handleDecreaseStat(idx)}
+                          className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-sm transition-all ${
+                            canDecrease
+                              ? 'bg-zinc-800 text-zinc-200 hover:bg-zinc-700 active:scale-95 shadow cursor-pointer'
+                              : 'bg-zinc-900/60 text-zinc-600 cursor-not-allowed border border-zinc-800'
+                          }`}
+                          title={canDecrease ? `Diminuir ${abName} (devolve pontos)` : 'Mínimo de 8 atingido (regra oficial D&D 5e)'}
                         >
                           -
                         </button>
-                        <span className="font-serif font-black text-2xl text-amber-300 w-8 text-center">
+                        <span className="font-serif font-black text-2xl text-amber-300 w-9 text-center">
                           {total}
                         </span>
                         <button
-                          onClick={() => {
-                            const next = [...baseStats];
-                            next[idx] = Math.min(18, next[idx] + 1);
-                            setBaseStats(next);
-                          }}
-                          className="w-6 h-6 rounded bg-zinc-800 text-zinc-300 hover:bg-zinc-700 flex items-center justify-center font-bold"
+                          type="button"
+                          disabled={!canIncrease}
+                          onClick={() => handleIncreaseStat(idx)}
+                          className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-sm transition-all ${
+                            canIncrease
+                              ? 'bg-zinc-800 text-zinc-200 hover:bg-amber-900/50 hover:text-amber-200 active:scale-95 shadow cursor-pointer'
+                              : 'bg-zinc-900/60 text-zinc-600 cursor-not-allowed border border-zinc-800'
+                          }`}
+                          title={
+                            baseVal >= 15
+                              ? 'Máximo de 15 base atingido (regra oficial D&D 5e)'
+                              : !canIncrease
+                              ? `Pontos insuficientes (requer +${incCost} pts)`
+                              : `Aumentar ${abName} (custa ${incCost} pt${incCost > 1 ? 's' : ''})`
+                          }
                         >
                           +
                         </button>
                       </div>
-                      <div className="flex items-center gap-2 text-[10px] text-zinc-400">
-                        <span>Mod: <strong className="text-zinc-200">{signed(m)}</strong></span>
-                        {racial > 0 && <span className="text-emerald-400">+{racial} raça</span>}
+
+                      <div className="flex flex-col items-center gap-0.5 text-[10px] text-zinc-400">
+                        <div className="flex items-center gap-1.5">
+                          <span>Mod: <strong className="text-zinc-200 font-bold">{signed(m)}</strong></span>
+                          {racial > 0 && <span className="text-emerald-400 font-semibold">+{racial} origem</span>}
+                        </div>
+                        <span className="text-zinc-500 font-mono">
+                          Base: {baseVal} ({costCurrent} pts)
+                        </span>
                       </div>
                     </div>
                   );
                 })}
               </div>
 
+              {/* Status and Summary */}
               <div className="p-3 bg-zinc-900/50 border border-zinc-800 rounded-xl flex items-center justify-around text-xs font-mono text-zinc-300">
                 <span className="flex items-center gap-1">
                   <Heart size={14} className="text-red-400" /> PV Máximos: <strong>{maxHp}</strong>
                 </span>
                 <span className="flex items-center gap-1">
-                  <Footprints size={14} className="text-amber-400" /> Deslocamento: <strong>{speciesInfo.speed}m</strong>
+                  <Footprints size={14} className="text-amber-400" /> Deslocamento: <strong>{speciesSpeed(chosenSpecies)}m</strong>
                 </span>
                 <span className="flex items-center gap-1">
                   <Award size={14} className="text-cyan-400" /> Bônus Proficiência: <strong>+2</strong>
@@ -572,6 +793,26 @@ export function CharacterCreator({ isOpen, onClose, onSave, busy }: CharacterCre
 
           {step === 4 && (
             <div className="space-y-4 animate-slide-up">
+              <SpellSelectionPanel
+                className={chosenClass}
+                selectedCantrips={selectedCantrips}
+                selectedPrepared={selectedPreparedSpells}
+                selectedSpellbook={selectedSpellbook}
+                onCantripsChange={setSelectedCantrips}
+                onPreparedChange={setSelectedPreparedSpells}
+                onSpellbookChange={setSelectedSpellbook}
+              />
+
+              {!spellSelectionValidation.ok && (
+                <div className="rounded-xl border border-amber-800/60 bg-amber-950/20 p-3 text-xs text-amber-200 leading-relaxed">
+                  {spellSelectionValidation.reason}
+                </div>
+              )}
+            </div>
+          )}
+
+          {step === 5 && (
+            <div className="space-y-4 animate-slide-up">
               <div className="p-4 bg-gradient-to-br from-zinc-900 to-black border border-amber-900/60 rounded-2xl flex items-center justify-between">
                 <div>
                   <h3 className="font-serif font-black text-xl text-amber-200">
@@ -616,18 +857,28 @@ export function CharacterCreator({ isOpen, onClose, onSave, busy }: CharacterCre
             <div />
           )}
 
-          {step < 4 ? (
+          {step < 5 ? (
             <button
+              disabled={(step === 2 && !isStep2Valid) || (step === 4 && !spellSelectionValidation.ok)}
               onClick={() => setStep((step + 1) as any)}
-              className="flex items-center gap-1 gold-button text-xs py-1.5 px-4"
+              className={`flex items-center gap-1 text-xs py-1.5 px-4 rounded-xl font-bold transition-all ${
+                step === 2 && !isStep2Valid
+                  ? 'bg-zinc-900 text-zinc-500 cursor-not-allowed border border-zinc-800'
+                  : 'gold-button'
+              }`}
+              title={step === 2 && !isStep2Valid ? 'Distribua os pontos dentro do limite oficial de 27 pts (D&D 5e)' : ''}
             >
               Próximo <ChevronRight size={14} />
             </button>
           ) : (
             <button
-              disabled={busy}
+              disabled={busy || !isStep2Valid || !spellSelectionValidation.ok}
               onClick={handleFinish}
-              className="flex items-center gap-1.5 gold-button text-xs py-2 px-5 font-bold shadow-lg"
+              className={`flex items-center gap-1.5 text-xs py-2 px-5 font-bold shadow-lg rounded-xl transition-all ${
+                busy || !isStep2Valid
+                  ? 'bg-zinc-900 text-zinc-500 cursor-not-allowed border border-zinc-800'
+                  : 'gold-button'
+              }`}
             >
               <Sparkles size={14} /> {busy ? 'Forjando…' : 'Concluir & Jogar'}
             </button>

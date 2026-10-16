@@ -1,0 +1,13 @@
+node_modules
+.next
+.vinext
+.openai
+data
+scratch
+MAP_IMAGE
+music
+tests
+*.bak
+*.log
+*.tsbuildinfo
+public/art/*-source.png

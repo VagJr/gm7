@@ -119,9 +119,9 @@ const ZONE_TYPE_CONFIG: Record<
 };
 
 const PRESET_MAPS = [
-  { id: 'village', name: 'Vila do Rio Verde', imageSrc: '/maps/vila.png' },
-  { id: 'forest', name: 'Floresta dos Sussurros', imageSrc: '/maps/mata.png' },
-  { id: 'dungeon', name: 'Catacumbas dos Três Selos', imageSrc: '/maps/dungeon.png' }
+  { id: 'village', name: 'Vila do Rio Verde', imageSrc: '/maps/vila-v2.webp' },
+  { id: 'forest', name: 'Floresta dos Sussurros', imageSrc: '/maps/mata-v2.webp' },
+  { id: 'dungeon', name: 'Catacumbas dos Três Selos', imageSrc: '/maps/dungeon-v2.webp' }
 ];
 
 export function AdminMapEditor() {

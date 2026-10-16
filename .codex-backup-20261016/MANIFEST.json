@@ -1,0 +1,2617 @@
+{
+ "format": 1,
+ "source_root": "C:\\gm7",
+ "repository": "VagJr/gm7",
+ "backup_branch": "backup/codex-2026-10-16-gm7",
+ "created_local_date": "2026-10-16",
+ "content": "code-and-art-only",
+ "local_only": [
+  {
+   "path": ".env.local",
+   "type": "configuration-key-or-save",
+   "bytes": 2813
+  },
+  {
+   "path": "data/sqlite.db",
+   "type": "configuration-key-or-save",
+   "bytes": 4096
+  }
+ ],
+ "sanitized_files": [],
+ "excluded_categories": {
+  "generated-or-downloadable-directory": 4,
+  "generated-or-installation-file": 7
+ },
+ "files": {
+  ".agents/skills/neon-postgres/SKILL.md": {
+   "sha": "ae831f59ec95cf9e0c6bc9f9b93d8771b638a2c5",
+   "mode": "100644",
+   "bytes": 16875
+  },
+  ".agents/skills/neon-postgres/references/full-text-search.md": {
+   "sha": "f42756c984cf507b6cafa8e46b6f15fce4e5b603",
+   "mode": "100644",
+   "bytes": 4000
+  },
+  ".agents/skills/neon-postgres/references/hybrid-search.md": {
+   "sha": "414f632a29ea4e6a051a7b164e34d1587a7bb662",
+   "mode": "100644",
+   "bytes": 4541
+  },
+  ".agents/skills/neon-postgres/references/lakebase-search-drizzle.md": {
+   "sha": "effb17ee9ce86f65a346e0fcf5732bb089b43a78",
+   "mode": "100644",
+   "bytes": 6887
+  },
+  ".agents/skills/neon-postgres/references/vector-search.md": {
+   "sha": "5ef486319bc258c6398cffce147ece9747c4454b",
+   "mode": "100644",
+   "bytes": 6381
+  },
+  ".agents/skills/neon/SKILL.md": {
+   "sha": "26df4ee7b50a6f89524c05a9a37b55e411382174",
+   "mode": "100644",
+   "bytes": 35564
+  },
+  ".agents/skills/neon/references/auth.md": {
+   "sha": "097c64359fa057b98fe71cb280019848767355e3",
+   "mode": "100644",
+   "bytes": 742
+  },
+  ".agents/skills/neon/references/claimable-neon.md": {
+   "sha": "c5fd517885aa20797a39331a1aa9bd0c0c1246f6",
+   "mode": "100644",
+   "bytes": 8280
+  },
+  ".agents/skills/neon/references/function-triggers.md": {
+   "sha": "0e267d32fd82bc02d51422f26b82186912e45359",
+   "mode": "100644",
+   "bytes": 3302
+  },
+  ".agents/skills/neon/references/logs-loki.md": {
+   "sha": "0dc3fa5d670aa9ccfa7c9ce6432cf9035047c4bb",
+   "mode": "100644",
+   "bytes": 4105
+  },
+  ".agents/skills/neon/references/parse-env.md": {
+   "sha": "d4487a7150bdf58cabfdcdaf1466d67f7bc0b735",
+   "mode": "100644",
+   "bytes": 1438
+  },
+  ".agents/skills/neon/references/sdk.md": {
+   "sha": "b0c723202b851517bad675166c2a64fe3a02333f",
+   "mode": "100644",
+   "bytes": 813
+  },
+  ".dockerignore": {
+   "sha": "67043f92ff7b23a16a4876747af3e67c4e236314",
+   "mode": "100644",
+   "bytes": 560
+  },
+  ".github/workflows/fly-deploy.yml": {
+   "sha": "a335b8a0428bb1b112e063d1b8ab1af56a751345",
+   "mode": "100644",
+   "bytes": 510
+  },
+  ".gitignore": {
+   "sha": "ffaad2c74a24add1ac1d35f5b6a210bc0d103cea",
+   "mode": "100644",
+   "bytes": 638
+  },
+  ".node-version": {
+   "sha": "7d41c735d7127c4a2530ebe846b14ffbf38b8031",
+   "mode": "100644",
+   "bytes": 8
+  },
+  ".npmrc": {
+   "sha": "0bd93858a0a595c2d74492ca54976601cfa34d93",
+   "mode": "100644",
+   "bytes": 67
+  },
+  ".openai/hosting.json": {
+   "sha": "ccc36b32fe619bd8d85c80b05d0d99f07df5dfa7",
+   "mode": "100644",
+   "bytes": 91
+  },
+  ".vercelignore": {
+   "sha": "bee710a2996bf93d9007498ecf6b40a758713311",
+   "mode": "100644",
+   "bytes": 120
+  },
+  ".vinext/dev/lock.json": {
+   "sha": "6a5f538ade8438e0a11ef7039ecd6bc6e90df587",
+   "mode": "100644",
+   "bytes": 146
+  },
+  "Dockerfile": {
+   "sha": "0799fbf73b3fe1d273d419939dc7f36918196a4b",
+   "mode": "100644",
+   "bytes": 1071
+  },
+  "MAP_IMAGE/dungeon.png": {
+   "sha": "a07a9c9d0ae7a19fb38ed488784d20f021f6ac1c",
+   "mode": "100644",
+   "bytes": 2660910
+  },
+  "MAP_IMAGE/mata.png": {
+   "sha": "9cfea1a7b8799ffbb85d0b45c19ef9b96be78fc5",
+   "mode": "100644",
+   "bytes": 3257296
+  },
+  "MAP_IMAGE/vila.png": {
+   "sha": "ac1a2f8d338d589e4527a34e3af71df6515cc88e",
+   "mode": "100644",
+   "bytes": 3383556
+  },
+  "README.md": {
+   "sha": "1b2742b768dc1a585d4f2535ece1fc2118ae3c8e",
+   "mode": "100644",
+   "bytes": 3417
+  },
+  "REFORMULACAO.md": {
+   "sha": "43361c64b6b3d62c7346b2082929f586746d25e9",
+   "mode": "100644",
+   "bytes": 14297
+  },
+  "SRD-ATTRIBUTION.md": {
+   "sha": "d421e8d272cb4509a28b1efc58baa90a8ff288a3",
+   "mode": "100644",
+   "bytes": 238
+  },
+  "app/admin/map-editor/page.tsx": {
+   "sha": "30c08de686fdd303f18e4309f0e35e12a0a364d4",
+   "mode": "100644",
+   "bytes": 386
+  },
+  "app/api/game/route.ts": {
+   "sha": "35bfa34bf57bdd184efaccbcf31a7863169eb34e",
+   "mode": "100644",
+   "bytes": 176422
+  },
+  "app/api/game/stream/route.ts": {
+   "sha": "34b2e34d21a62f6e70d0ca61fd250beb0764cfbd",
+   "mode": "100644",
+   "bytes": 3329
+  },
+  "app/api/gm/route.ts": {
+   "sha": "d0d07e3507482b41105d0453d87cdd5c2fc6a574",
+   "mode": "100644",
+   "bytes": 34563
+  },
+  "app/api/health/route.ts": {
+   "sha": "768d73a444eebbd047d903fd048b2450e1ed6659",
+   "mode": "100644",
+   "bytes": 712
+  },
+  "app/api/library/route.ts": {
+   "sha": "fef4373fe15bc9bbdebd80a65903e490aa4c01b1",
+   "mode": "100644",
+   "bytes": 1181
+  },
+  "app/api/map-collision/route.ts": {
+   "sha": "1009f738f8f0c3e64d64969d12e3f070aa94b420",
+   "mode": "100644",
+   "bytes": 824
+  },
+  "app/api/npc-dialogue/route.ts": {
+   "sha": "54f79851914830a707b4d6a252ea63716eedfb6e",
+   "mode": "100644",
+   "bytes": 16373
+  },
+  "app/api/wipe/route.ts": {
+   "sha": "826bf7700f89663c94e364bc1e1a12af0f23613e",
+   "mode": "100644",
+   "bytes": 323
+  },
+  "app/chatgpt-auth.ts": {
+   "sha": "c09f557f337565b20e1983658f956eed0f16235f",
+   "mode": "100644",
+   "bytes": 2824
+  },
+  "app/dragons.css": {
+   "sha": "d42033a6cc91ce9b87e7673ccf1b1d2b6a0d5016",
+   "mode": "100644",
+   "bytes": 15440
+  },
+  "app/game.tsx": {
+   "sha": "a5e6fd306cfa4995b88068e6c764af05909d16ed",
+   "mode": "100644",
+   "bytes": 211553
+  },
+  "app/game.tsx.bak": {
+   "sha": "7bcc4edc82348cc28e20f1dbdbcabdb785a11151",
+   "mode": "100644",
+   "bytes": 156886
+  },
+  "app/game.tsx.before-mmo-persist-fix.bak": {
+   "sha": "7bcc4edc82348cc28e20f1dbdbcabdb785a11151",
+   "mode": "100644",
+   "bytes": 156886
+  },
+  "app/game.tsx.before-move-fix.bak": {
+   "sha": "7bcc4edc82348cc28e20f1dbdbcabdb785a11151",
+   "mode": "100644",
+   "bytes": 156886
+  },
+  "app/gateway.css": {
+   "sha": "a52a702aa6efead0da9830a6716d88c9c4e3dba2",
+   "mode": "100644",
+   "bytes": 6266
+  },
+  "app/globals.css": {
+   "sha": "85834bbe1d5306fb89c0a60dbc59cf15064ce915",
+   "mode": "100644",
+   "bytes": 38633
+  },
+  "app/layout.tsx": {
+   "sha": "03036e60bf99dc20bfcbd9d67781172c8836ae0b",
+   "mode": "100644",
+   "bytes": 1177
+  },
+  "app/page.tsx": {
+   "sha": "4694016554574f1ca2e8480367429d7b4c0fc370",
+   "mode": "100644",
+   "bytes": 79
+  },
+  "app/play.css": {
+   "sha": "ad165e622c27e7439cc5932d886548cd9178c519",
+   "mode": "100644",
+   "bytes": 12753
+  },
+  "app/production-art.css": {
+   "sha": "1b1865ca47b6463cd9bb0dbe761b619d8c32be42",
+   "mode": "100644",
+   "bytes": 18461
+  },
+  "cloudflare-env.d.ts": {
+   "sha": "8d12362ec3f1e4fe3898737ea73671369412ff67",
+   "mode": "100644",
+   "bytes": 142
+  },
+  "components.json": {
+   "sha": "c8f5bb16f79ed774f67415a8dc2b4a38243e3e90",
+   "mode": "100644",
+   "bytes": 420
+  },
+  "components/admin/admin-map-editor.tsx": {
+   "sha": "7a50a48d05930fe818fa08c893f8425ce210ebb4",
+   "mode": "100644",
+   "bytes": 48398
+  },
+  "components/game/adventure-gateway.tsx": {
+   "sha": "9c1a71023143f50981b7dc698e2843a1e0eb1fc7",
+   "mode": "100644",
+   "bytes": 6369
+  },
+  "components/game/battle-console.tsx": {
+   "sha": "badd2cae2d55ca5a10649030a087e3d51ace3ea2",
+   "mode": "100644",
+   "bytes": 10870
+  },
+  "components/game/bottom-player-hud.tsx": {
+   "sha": "709a711bd25bed1d6cf764421c0136d7a74ddc3a",
+   "mode": "100644",
+   "bytes": 64439
+  },
+  "components/game/campaign-tracker.tsx": {
+   "sha": "e5b438f7547b671cd0b8934b20ba5cba896a2f24",
+   "mode": "100644",
+   "bytes": 17650
+  },
+  "components/game/character-creator.tsx": {
+   "sha": "f46e3f6443016b57b3603aa40dd63c0d06096705",
+   "mode": "100644",
+   "bytes": 39031
+  },
+  "components/game/dice-roller-3d.tsx": {
+   "sha": "af61223239ef7dd8d1d1f1e0dc8ce9616c16bdb7",
+   "mode": "100644",
+   "bytes": 6700
+  },
+  "components/game/dragons-gateway.tsx": {
+   "sha": "5244962801434d115f2aafdd8e8da4056aee4fc0",
+   "mode": "100644",
+   "bytes": 6488
+  },
+  "components/game/exploration-bar.tsx": {
+   "sha": "f88b2d8ad896db2f385a6712dbfba024b6bf7dec",
+   "mode": "100644",
+   "bytes": 3696
+  },
+  "components/game/floating-text.tsx": {
+   "sha": "f84605dd721d4edc95c59d2e26e36617ac48a496",
+   "mode": "100644",
+   "bytes": 2015
+  },
+  "components/game/game-board.tsx": {
+   "sha": "24aa477908bae9b76b7b84b2e7d5d34511542024",
+   "mode": "100644",
+   "bytes": 793
+  },
+  "components/game/game-navigation.tsx": {
+   "sha": "6dc03c39e2266b4b94050569e9faf42fc2a1280f",
+   "mode": "100644",
+   "bytes": 6034
+  },
+  "components/game/game-settings-modal.tsx": {
+   "sha": "eadd613d6992127a979986949551334f841502af",
+   "mode": "100644",
+   "bytes": 17380
+  },
+  "components/game/gamemaster-sidebar.tsx": {
+   "sha": "b6ffd0ea06c222146baac39ab4d883f7e9fcd60c",
+   "mode": "100644",
+   "bytes": 18041
+  },
+  "components/game/initiative-ribbon.tsx": {
+   "sha": "c6ecd9068c3ede372b7e0be93d808915b3d66e56",
+   "mode": "100644",
+   "bytes": 8126
+  },
+  "components/game/inventory-panel.tsx": {
+   "sha": "c4278dc79fb3a7443a13bde2e076bc80ec4af0ea",
+   "mode": "100644",
+   "bytes": 16644
+  },
+  "components/game/level-up-modal.tsx": {
+   "sha": "d746148357cbef3c96b1e8cdc4244029ccd7a03e",
+   "mode": "100644",
+   "bytes": 11785
+  },
+  "components/game/map-editor-modal.tsx": {
+   "sha": "0e4d60ac42c00071af2f55c4e053930d3bf6d607",
+   "mode": "100644",
+   "bytes": 25717
+  },
+  "components/game/mobile-action-cluster.tsx": {
+   "sha": "c9524b7054b71c9df89576aa9e565f45edf2e42d",
+   "mode": "100644",
+   "bytes": 7262
+  },
+  "components/game/mobile-drawer.tsx": {
+   "sha": "f513410e02a551583a89822b16ece8078d591af2",
+   "mode": "100644",
+   "bytes": 13263
+  },
+  "components/game/npc-dialog.tsx": {
+   "sha": "d732ee59bfbc1bffedb865a43325327818131535",
+   "mode": "100644",
+   "bytes": 11601
+  },
+  "components/game/party-sidebar.tsx": {
+   "sha": "f0d05e8275c6ecd0cfeaea502c02e1b2c441bb0a",
+   "mode": "100644",
+   "bytes": 26292
+  },
+  "components/game/quest-log.tsx": {
+   "sha": "e9e37db476eb46eee7792dbf17fe25b874e7d8f3",
+   "mode": "100644",
+   "bytes": 18544
+  },
+  "components/game/shop-modal.tsx": {
+   "sha": "3e17a7e13a05e2c31713f66e36926c4f6165f5ec",
+   "mode": "100644",
+   "bytes": 22257
+  },
+  "components/game/spell-selection-panel.tsx": {
+   "sha": "b144e47994e2e8f169c44ad395cfbc1e9e2123e5",
+   "mode": "100644",
+   "bytes": 14233
+  },
+  "components/game/tactical-map.tsx": {
+   "sha": "3d9ffc711d0271cc4e2efc720739b7c060c2c511",
+   "mode": "100644",
+   "bytes": 92490
+  },
+  "components/game/top-enemy-hud.tsx": {
+   "sha": "fd6f1968b80afe1b00591bdca483f55ab2662c8c",
+   "mode": "100644",
+   "bytes": 8996
+  },
+  "components/game/world-board.tsx": {
+   "sha": "b5db6461ddfd942bb4d0955ff7f51fc6fa5beb49",
+   "mode": "100644",
+   "bytes": 31307
+  },
+  "components/ui/accordion.tsx": {
+   "sha": "91e3a250ce6ee0797b0258454d774800650adcc8",
+   "mode": "100644",
+   "bytes": 2048
+  },
+  "components/ui/alert-dialog.tsx": {
+   "sha": "dad327341382f200b84d5f833eb1b7a74b0e7469",
+   "mode": "100644",
+   "bytes": 5439
+  },
+  "components/ui/alert.tsx": {
+   "sha": "f99164ed4b320790482f514342dab5e72f284aca",
+   "mode": "100644",
+   "bytes": 1614
+  },
+  "components/ui/aspect-ratio.tsx": {
+   "sha": "57e38fa96f9c0cb767d7b8de0d6dbc171d1b921a",
+   "mode": "100644",
+   "bytes": 274
+  },
+  "components/ui/attachment.tsx": {
+   "sha": "5bdd1ce7db5800eb55198cd0291a1e47dc67fb0d",
+   "mode": "100644",
+   "bytes": 6002
+  },
+  "components/ui/avatar.tsx": {
+   "sha": "ea658505703a577fe93341e5e1a0b478c27245f7",
+   "mode": "100644",
+   "bytes": 2916
+  },
+  "components/ui/badge.tsx": {
+   "sha": "6eb2a057aae0e23a74368cc4daf9657210e9a740",
+   "mode": "100644",
+   "bytes": 1776
+  },
+  "components/ui/breadcrumb.tsx": {
+   "sha": "004bb63a4c92229e612b6126d79fb7b078aa7565",
+   "mode": "100644",
+   "bytes": 2350
+  },
+  "components/ui/bubble.tsx": {
+   "sha": "792146e61d80ef595d032d5d09a3d572d50f1374",
+   "mode": "100644",
+   "bytes": 4699
+  },
+  "components/ui/button-group.tsx": {
+   "sha": "cd550d7afca6562548afe3f595b352406f7f3951",
+   "mode": "100644",
+   "bytes": 2202
+  },
+  "components/ui/button.tsx": {
+   "sha": "4d38506cee5430d95a59ec6a2a0cef2b79217e7a",
+   "mode": "100644",
+   "bytes": 2392
+  },
+  "components/ui/calendar.tsx": {
+   "sha": "5d31419b130a18c52320f5a21546a9236123b6bf",
+   "mode": "100644",
+   "bytes": 7832
+  },
+  "components/ui/card.tsx": {
+   "sha": "acf57dc5a534792273b8fb86227e92e001f3dc53",
+   "mode": "100644",
+   "bytes": 1987
+  },
+  "components/ui/carousel.tsx": {
+   "sha": "0e05a77ea155fde6af5d9a4848b1d3953df6ea5a",
+   "mode": "100644",
+   "bytes": 5556
+  },
+  "components/ui/chart.tsx": {
+   "sha": "9813c584e125847d88e9e7e7f9edff7e9ba45a97",
+   "mode": "100644",
+   "bytes": 10614
+  },
+  "components/ui/checkbox.tsx": {
+   "sha": "f5a7e433f3795b82a00c5c06a1fc6decf116a84a",
+   "mode": "100644",
+   "bytes": 1214
+  },
+  "components/ui/collapsible.tsx": {
+   "sha": "2f7a4e7fc64a8874373c1584646a63f28cd63c47",
+   "mode": "100644",
+   "bytes": 795
+  },
+  "components/ui/combobox.tsx": {
+   "sha": "2415bd801031a16bbcee8343058825feecfaea69",
+   "mode": "100644",
+   "bytes": 9158
+  },
+  "components/ui/command.tsx": {
+   "sha": "8fe3ccb406be52d28961b0c0220e87ecd19596ca",
+   "mode": "100644",
+   "bytes": 4818
+  },
+  "components/ui/context-menu.tsx": {
+   "sha": "5aaca76552cf0468b1def03c9e2c42f1f0b60734",
+   "mode": "100644",
+   "bytes": 8268
+  },
+  "components/ui/dialog.tsx": {
+   "sha": "ee2a166e24bda189c33fbc8e0693fd6819de6a84",
+   "mode": "100644",
+   "bytes": 4267
+  },
+  "components/ui/direction.tsx": {
+   "sha": "22e165774bd595fbf41d0c45efef1cf996897983",
+   "mode": "100644",
+   "bytes": 506
+  },
+  "components/ui/drawer.tsx": {
+   "sha": "ad08671442203fe345093f364696bdf43528e0b7",
+   "mode": "100644",
+   "bytes": 4255
+  },
+  "components/ui/dropdown-menu.tsx": {
+   "sha": "ae1fcf62f1e3b648554789b8fe02943d92bf00fc",
+   "mode": "100644",
+   "bytes": 8418
+  },
+  "components/ui/empty.tsx": {
+   "sha": "ce4b0095f6d19d2eae2e465060e9060b0c210856",
+   "mode": "100644",
+   "bytes": 2396
+  },
+  "components/ui/field.tsx": {
+   "sha": "ec849dae4d3dd06a973ba22e4b2248a25cf18148",
+   "mode": "100644",
+   "bytes": 6159
+  },
+  "components/ui/form.tsx": {
+   "sha": "f371fea1bc35380d28678c6cf53df8f65deb2776",
+   "mode": "100644",
+   "bytes": 3757
+  },
+  "components/ui/hover-card.tsx": {
+   "sha": "91e869c0d3091cbeddf5cb0266e82ddf56f829a6",
+   "mode": "100644",
+   "bytes": 1526
+  },
+  "components/ui/input-group.tsx": {
+   "sha": "a7652d936fffd9c5bca4b88e6b9715bf559e667d",
+   "mode": "100644",
+   "bytes": 5065
+  },
+  "components/ui/input-otp.tsx": {
+   "sha": "6a556afacd71996bf0e385ff2b04869fb2ee4523",
+   "mode": "100644",
+   "bytes": 2254
+  },
+  "components/ui/input.tsx": {
+   "sha": "f1124aea14eee062fc2f4c55dad5f0d9de0ccc1a",
+   "mode": "100644",
+   "bytes": 962
+  },
+  "components/ui/item.tsx": {
+   "sha": "d5dbb1a9c2e70456e45a39887a4b7cc56d484a45",
+   "mode": "100644",
+   "bytes": 4486
+  },
+  "components/ui/kbd.tsx": {
+   "sha": "2459224fbc531f6306b73aaeb22e9022d9985332",
+   "mode": "100644",
+   "bytes": 862
+  },
+  "components/ui/label.tsx": {
+   "sha": "1ac80f701ebfe9dc02d632c08cafade732e46625",
+   "mode": "100644",
+   "bytes": 606
+  },
+  "components/ui/marker.tsx": {
+   "sha": "cfa76c6c014ab342befcbf7571eb932917406522",
+   "mode": "100644",
+   "bytes": 1864
+  },
+  "components/ui/menubar.tsx": {
+   "sha": "4af16a428377f81cbb3f66adfe518308e0b690d8",
+   "mode": "100644",
+   "bytes": 8389
+  },
+  "components/ui/message-scroller.tsx": {
+   "sha": "0b05011259c026a357380c3834bce0ead8565d22",
+   "mode": "100644",
+   "bytes": 3992
+  },
+  "components/ui/message.tsx": {
+   "sha": "53437e8db2b0fad1da06a7499e54ddaf116295c2",
+   "mode": "100644",
+   "bytes": 2232
+  },
+  "components/ui/native-select.tsx": {
+   "sha": "3058398399ad6c029ad527052475b360b114715b",
+   "mode": "100644",
+   "bytes": 1995
+  },
+  "components/ui/navigation-menu.tsx": {
+   "sha": "0a673f513c97fbeaae0872403b7582ab2ba7e3c3",
+   "mode": "100644",
+   "bytes": 6658
+  },
+  "components/ui/pagination.tsx": {
+   "sha": "1dcfb0cc050c5f2bdd930522d627313d03d3690c",
+   "mode": "100644",
+   "bytes": 2717
+  },
+  "components/ui/popover.tsx": {
+   "sha": "30058c4ec284ca9cad1ed1162d084ce3cd94e2b0",
+   "mode": "100644",
+   "bytes": 2357
+  },
+  "components/ui/progress.tsx": {
+   "sha": "b3ae25089ad549b7f13125e482f99b43dd895bd2",
+   "mode": "100644",
+   "bytes": 755
+  },
+  "components/ui/radio-group.tsx": {
+   "sha": "fe514536ed771f7adef0a6b9e4d1aeadc2c95481",
+   "mode": "100644",
+   "bytes": 1460
+  },
+  "components/ui/resizable.tsx": {
+   "sha": "a76832a10b4c5c2a137e25c16478567ba86daf0d",
+   "mode": "100644",
+   "bytes": 1815
+  },
+  "components/ui/scroll-area.tsx": {
+   "sha": "73c4eb1cdcd4a699b150a9ddc3e87bfb90b63d09",
+   "mode": "100644",
+   "bytes": 1639
+  },
+  "components/ui/select.tsx": {
+   "sha": "c0dc7120b4f78008ae5efc6d1c8b7ec8205c35d5",
+   "mode": "100644",
+   "bytes": 6353
+  },
+  "components/ui/separator.tsx": {
+   "sha": "cd873e3631b571060f166897b7b62e033e87c18f",
+   "mode": "100644",
+   "bytes": 694
+  },
+  "components/ui/sheet.tsx": {
+   "sha": "cb53bb28b6850745c9519e8e7462e05f85a50c93",
+   "mode": "100644",
+   "bytes": 4188
+  },
+  "components/ui/sidebar.tsx": {
+   "sha": "f5f6c5aefc88ffa2e999e284b299472215c05161",
+   "mode": "100644",
+   "bytes": 21526
+  },
+  "components/ui/skeleton.tsx": {
+   "sha": "3ec6be770b846170b8e7f8916e5f165e2d1730df",
+   "mode": "100644",
+   "bytes": 276
+  },
+  "components/ui/slider.tsx": {
+   "sha": "46ebc4b4df1e9baf1f3997a4b6c08ef80c84a9c9",
+   "mode": "100644",
+   "bytes": 1991
+  },
+  "components/ui/sonner.tsx": {
+   "sha": "9b20afe2e10fd9b94d1abc1ae732054b2fb9821c",
+   "mode": "100644",
+   "bytes": 1034
+  },
+  "components/ui/spinner.tsx": {
+   "sha": "a70e713c5b4ecb2af186efe3fadea51805f26ba5",
+   "mode": "100644",
+   "bytes": 331
+  },
+  "components/ui/switch.tsx": {
+   "sha": "8baa844fdb17d668b3ce07cfbd6a7ef52e2eb5eb",
+   "mode": "100644",
+   "bytes": 1408
+  },
+  "components/ui/table.tsx": {
+   "sha": "7add5f1a22db954ac6cb3446f1bf8c8a9fc5c335",
+   "mode": "100644",
+   "bytes": 2478
+  },
+  "components/ui/tabs.tsx": {
+   "sha": "b463afd170637df477e36184aa27d2ad1bd3c3e0",
+   "mode": "100644",
+   "bytes": 3782
+  },
+  "components/ui/textarea.tsx": {
+   "sha": "e67d8fefe50c41dfa2deed9a5096d5be7691581a",
+   "mode": "100644",
+   "bytes": 759
+  },
+  "components/ui/toggle-group.tsx": {
+   "sha": "9894607b212ff7182bf2024f4262da03df0a8973",
+   "mode": "100644",
+   "bytes": 2308
+  },
+  "components/ui/toggle.tsx": {
+   "sha": "5250c98ff7f11f531af38c227230a76b7d25bf19",
+   "mode": "100644",
+   "bytes": 1565
+  },
+  "components/ui/tooltip.tsx": {
+   "sha": "ec65c1e4255f050d9555c6cdade90a5f8a6c0c29",
+   "mode": "100644",
+   "bytes": 1830
+  },
+  "db/index.ts": {
+   "sha": "4b1e0da40121e99ca44bdd1303e282a769ad55b7",
+   "mode": "100644",
+   "bytes": 773
+  },
+  "db/schema.ts": {
+   "sha": "7dd584b82db3cf77c32afc6e8df03e466e7145cd",
+   "mode": "100644",
+   "bytes": 471
+  },
+  "docker-entrypoint.js": {
+   "sha": "84a3dc8fc1119ae5e370b8e6d3512bea3a8242d7",
+   "mode": "100644",
+   "bytes": 652
+  },
+  "docs/art-prompts.json": {
+   "sha": "a28e4dbdc9765ac09428a5c0a32dfcbbf7c78f89",
+   "mode": "100644",
+   "bytes": 3880
+  },
+  "docs/map-cleanup-prompt.json": {
+   "sha": "e4f81febd47d860b434d44e8805864d53aebf10f",
+   "mode": "100644",
+   "bytes": 1120
+  },
+  "docs/maps-cleanup-prompts.json": {
+   "sha": "70a4632ebc56e69d7aba3d0d20ff9644b5cfce6f",
+   "mode": "100644",
+   "bytes": 2026
+  },
+  "docs/production/RELEASE-ART-QA.md": {
+   "sha": "02833eda4b40c87fab897bd047e1d092f8c8a488",
+   "mode": "100644",
+   "bytes": 4225
+  },
+  "docs/production/art-prompts.json": {
+   "sha": "cd5728fb2fca5d94c8d8b2f976b772b2b37a05bf",
+   "mode": "100644",
+   "bytes": 3322
+  },
+  "docs/production/creator-mobile-final.png": {
+   "sha": "6cc7ceaed09e1f0e1a720e7458a652cce4b45f29",
+   "mode": "100644",
+   "bytes": 59491
+  },
+  "docs/production/hud-menu-final.png": {
+   "sha": "82fe25f44a17ce3c31e15a68312d184e34e9f5a0",
+   "mode": "100644",
+   "bytes": 155699
+  },
+  "docs/production/hud-prompts.json": {
+   "sha": "778d222229095b98b1456c58034314b8524ed9d0",
+   "mode": "100644",
+   "bytes": 3866
+  },
+  "docs/production/miniatures-contact.jpg": {
+   "sha": "ef4152171822c00713eabf51698aa4901aa4029c",
+   "mode": "100644",
+   "bytes": 227785
+  },
+  "docs/production/scenery-contact.jpg": {
+   "sha": "0a6f3e2146a29db29eaf4bc278ec7e467d01b101",
+   "mode": "100644",
+   "bytes": 252947
+  },
+  "docs/visual-qa/REPORT.md": {
+   "sha": "96507593ace0f69813361d00df87f8c02c1a7bc0",
+   "mode": "100644",
+   "bytes": 6410
+  },
+  "docs/visual-qa/character-summary-production.jpg": {
+   "sha": "b469ffedd16c5cd908f8a560884d0eb6b114718c",
+   "mode": "100644",
+   "bytes": 43379
+  },
+  "docs/visual-qa/compact-board.jpg": {
+   "sha": "825c4657205b6a6432745f8dc002abd6859a3f56",
+   "mode": "100644",
+   "bytes": 44372
+  },
+  "docs/visual-qa/compact-menu.jpg": {
+   "sha": "9261666e536a561a1310b109811460782fd037bb",
+   "mode": "100644",
+   "bytes": 24031
+  },
+  "docs/visual-qa/compatibility-2d.jpg": {
+   "sha": "34658d03ae6c98f753a49bd80d62468c46a1cb67",
+   "mode": "100644",
+   "bytes": 74585
+  },
+  "docs/visual-qa/desktop-board.jpg": {
+   "sha": "e9086ebfb4b7ac71e90255f8fbcb2dc980956732",
+   "mode": "100644",
+   "bytes": 302917
+  },
+  "docs/visual-qa/intro-desktop.jpg": {
+   "sha": "8f6e57a9b67873645381fd31c6d0b1f444d77ce2",
+   "mode": "100644",
+   "bytes": 126427
+  },
+  "docs/visual-qa/intro-mobile.jpg": {
+   "sha": "63565ded97fb3cfb50d0ea5ce68ddcb9ed963d2a",
+   "mode": "100644",
+   "bytes": 54975
+  },
+  "docs/visual-qa/landscape-board.jpg": {
+   "sha": "8fae553a93bb05c46ff247393afec34e2a37cb0f",
+   "mode": "100644",
+   "bytes": 66521
+  },
+  "docs/visual-qa/map-comparison.jpg": {
+   "sha": "3d5e85c889801df8c4d3bb681e14e50d8269e89b",
+   "mode": "100644",
+   "bytes": 1114601
+  },
+  "docs/visual-qa/mobile-board.jpg": {
+   "sha": "2d02f01b0927da3aa932a20df3e729092e219e13",
+   "mode": "100644",
+   "bytes": 86535
+  },
+  "docs/visual-qa/mobile-combat.jpg": {
+   "sha": "4eba3d48dea7591804239bac0bc4ad97e5f55e50",
+   "mode": "100644",
+   "bytes": 53022
+  },
+  "docs/visual-qa/mobile-inventory.jpg": {
+   "sha": "457e5d759882b69467c89cf3aacb847eab2a05d9",
+   "mode": "100644",
+   "bytes": 36959
+  },
+  "docs/visual-qa/mobile-menu.jpg": {
+   "sha": "f04ae43f60716f0b80d66239f5d1af09bc41431b",
+   "mode": "100644",
+   "bytes": 33042
+  },
+  "docs/visual-qa/mobile-production.jpg": {
+   "sha": "a429cbdcbe36eac2d5595e4201b84426f90d451f",
+   "mode": "100644",
+   "bytes": 87017
+  },
+  "docs/visual-qa/production-board.jpg": {
+   "sha": "e996d2a7db58ce8e732c6ca6bde8a1a20517a477",
+   "mode": "100644",
+   "bytes": 211549
+  },
+  "drizzle.config.ts": {
+   "sha": "15e607dc6b4f7f1c06b7605e4ebd9570b0442854",
+   "mode": "100644",
+   "bytes": 197
+  },
+  "drizzle/0000_cultured_miss_america.sql": {
+   "sha": "0129a0723323f718b6aa781cffae3f5505e069e1",
+   "mode": "100644",
+   "bytes": 404
+  },
+  "drizzle/meta/0000_snapshot.json": {
+   "sha": "27d4e448e5e3ab42b5c407ed97dc09f4afba908b",
+   "mode": "100644",
+   "bytes": 2475
+  },
+  "drizzle/meta/_journal.json": {
+   "sha": "695663b35f8b1a1725a0f00607dc1ee76a4dad8d",
+   "mode": "100644",
+   "bytes": 211
+  },
+  "eslint.config.mjs": {
+   "sha": "1c56c0144ce558825265a2d79d06b1ce6150d24f",
+   "mode": "100644",
+   "bytes": 846
+  },
+  "examples/d1/app/api/notes/route.ts": {
+   "sha": "07f8318c3c290d68163e95aa3e170ad92a235f27",
+   "mode": "100644",
+   "bytes": 1700
+  },
+  "examples/d1/db/schema.ts": {
+   "sha": "7bb0c157110799b9b53c767517e0d192b7201f2e",
+   "mode": "100644",
+   "bytes": 370
+  },
+  "fly.toml": {
+   "sha": "fa56b80389f0346e9d7661ad69b0ae51f32fdc42",
+   "mode": "100644",
+   "bytes": 468
+  },
+  "hooks/use-mobile.ts": {
+   "sha": "2b0fe1dfef3b17850bbac040665f514a8ffd0f15",
+   "mode": "100644",
+   "bytes": 565
+  },
+  "lib/activity-service.ts": {
+   "sha": "a94cc1306eda412e802b73aa646594b42b5a830b",
+   "mode": "100644",
+   "bytes": 9831
+  },
+  "lib/ai-map-prompts.ts": {
+   "sha": "9cd66ffabc9459f87e23afe44e7d8c5fafdf1abc",
+   "mode": "100644",
+   "bytes": 6223
+  },
+  "lib/audio-manager.ts": {
+   "sha": "c1e4a81f80317952f16538ea388c01000ecba981",
+   "mode": "100644",
+   "bytes": 8764
+  },
+  "lib/auth-origin.ts": {
+   "sha": "55332daf01baa196f55bb4ae464a2a876528e31d",
+   "mode": "100644",
+   "bytes": 852
+  },
+  "lib/battlemap-biomes.ts": {
+   "sha": "d76892aafa8391e1fde5b88bf4da5f01e1c8521a",
+   "mode": "100644",
+   "bytes": 24927
+  },
+  "lib/brand.ts": {
+   "sha": "54ace2604da4a575d2d7b3ff15bd673ab2ec6b2d",
+   "mode": "100644",
+   "bytes": 258
+  },
+  "lib/campaign-data.ts": {
+   "sha": "98f2747873335174c3e55b5a7b6f3c8e35c9bc66",
+   "mode": "100644",
+   "bytes": 3977
+  },
+  "lib/campaign-progression.ts": {
+   "sha": "99300add3f2b02e08d6355fb8f474712a5b5814c",
+   "mode": "100644",
+   "bytes": 14375
+  },
+  "lib/character-origins.ts": {
+   "sha": "f10fd1bf9233e6d8b84e31450db79f6ad03ad86b",
+   "mode": "100644",
+   "bytes": 3916
+  },
+  "lib/collision-system.ts": {
+   "sha": "615a51b1251fbee68f7e32db243505b68ddf76d1",
+   "mode": "100644",
+   "bytes": 26638
+  },
+  "lib/combat-instances.ts": {
+   "sha": "8961d4a18f6cc57e0220ad1a952cb1d0c307b216",
+   "mode": "100644",
+   "bytes": 1827
+  },
+  "lib/creature-profiles.ts": {
+   "sha": "5076a5a63d9f71ba5fb374ab3bfdb56df8ad28a5",
+   "mode": "100644",
+   "bytes": 9092
+  },
+  "lib/dragon-encounter.ts": {
+   "sha": "737c908d016da14da5fb04236acc0c6ccf96079a",
+   "mode": "100644",
+   "bytes": 6648
+  },
+  "lib/dungeon-crawler.ts": {
+   "sha": "51502feb1419e4b4355e4b1d169fb42c884244ee",
+   "mode": "100644",
+   "bytes": 24263
+  },
+  "lib/dungeon-generator.ts": {
+   "sha": "94591a49d4239fd2bbb25a41e5f2251182c3f13e",
+   "mode": "100644",
+   "bytes": 4360
+  },
+  "lib/dungeon-navigation.ts": {
+   "sha": "67be1385416634c878cbe4eb604bb07d3e3ab5e7",
+   "mode": "100644",
+   "bytes": 1254
+  },
+  "lib/equipment-inventory.ts": {
+   "sha": "97085b927aa41a365bd6a9a701bd6a8406e67481",
+   "mode": "100644",
+   "bytes": 3404
+  },
+  "lib/game-engine.ts": {
+   "sha": "a6d37977ab4d7b0d7f3ba502d832260c3f296382",
+   "mode": "100644",
+   "bytes": 66088
+  },
+  "lib/generated/srd-spells-5-2-1.ts": {
+   "sha": "321eef20579a1d29ef3256c9e289d217c4e9dc39",
+   "mode": "100644",
+   "bytes": 372778
+  },
+  "lib/gm-prompt.ts": {
+   "sha": "c64ddea074c92b7ba58b92085b4766e6ebf3e69a",
+   "mode": "100644",
+   "bytes": 2496
+  },
+  "lib/gm-tools.ts": {
+   "sha": "f0e0f87e1eba10fb9de47e2d97f408185928c26c",
+   "mode": "100644",
+   "bytes": 15838
+  },
+  "lib/inventory-manager.ts": {
+   "sha": "42ecf056524d78d07a5021b7394f8e7644a5e82d",
+   "mode": "100644",
+   "bytes": 1975
+  },
+  "lib/inventory-utils.ts": {
+   "sha": "b315c7f9e722d07646742edd776ea4d21db95806",
+   "mode": "100644",
+   "bytes": 3057
+  },
+  "lib/map-bounds.ts": {
+   "sha": "6e812fe94839f676e7454a8898f26ea8aa72cdb7",
+   "mode": "100644",
+   "bytes": 2341
+  },
+  "lib/micro-adventures.ts": {
+   "sha": "1a991c2e92ae13a348b37fb35d2c054bf38461c2",
+   "mode": "100644",
+   "bytes": 23101
+  },
+  "lib/mmo-progression.ts": {
+   "sha": "f1e0569167db293b34a8259ce64ef4e5f4fd3a7e",
+   "mode": "100644",
+   "bytes": 26703
+  },
+  "lib/monsters.json": {
+   "sha": "02f84bc9c2d6ea635dd3fe8f46dc33d71b72c680",
+   "mode": "100644",
+   "bytes": 12448
+  },
+  "lib/npc-generator.ts": {
+   "sha": "eb5792d7f64c5791412a09bb73c68b6c186ce209",
+   "mode": "100644",
+   "bytes": 3691
+  },
+  "lib/npc-life.ts": {
+   "sha": "3849a4aa41d0a215f3fbe00833efa9809fe2d6c5",
+   "mode": "100644",
+   "bytes": 8548
+  },
+  "lib/open-world.ts": {
+   "sha": "3d07f7a4ba3ea39952e34a04792f375064936353",
+   "mode": "100644",
+   "bytes": 5362
+  },
+  "lib/postgres-room-db.ts": {
+   "sha": "1135554e727647ae1eec061429b7d93db052dc4d",
+   "mode": "100644",
+   "bytes": 2794
+  },
+  "lib/procedural-items.ts": {
+   "sha": "088685ffed7c5f9957f0ca53373902d630f55ff6",
+   "mode": "100644",
+   "bytes": 18200
+  },
+  "lib/room-db.ts": {
+   "sha": "540638d3deb844070bce1ed97f3a1eecbd3ee1cc",
+   "mode": "100644",
+   "bytes": 2601
+  },
+  "lib/room-events.ts": {
+   "sha": "6b80f63c5b47a4a1e3d761016ec11658948ab9bd",
+   "mode": "100644",
+   "bytes": 1251
+  },
+  "lib/room-stream.ts": {
+   "sha": "e3abf3354d7645d938fcb5bd1935d08073cb68dc",
+   "mode": "100644",
+   "bytes": 2980
+  },
+  "lib/sandbox-director.ts": {
+   "sha": "e4c63b0c02bb81c94105afbbb99d996e8973842d",
+   "mode": "100644",
+   "bytes": 19054
+  },
+  "lib/session-token.ts": {
+   "sha": "e12a0b7fc4379b7cf893d8b9c70c72116aeaa964",
+   "mode": "100644",
+   "bytes": 1394
+  },
+  "lib/sound-effects.ts": {
+   "sha": "d4f05664f5090bd672fe1eb0be9ccbbddb12f6ea",
+   "mode": "100644",
+   "bytes": 8868
+  },
+  "lib/srd-advanced-combat.ts": {
+   "sha": "5fdda16f53309c01b91b52bba2814f9d4f6294d0",
+   "mode": "100644",
+   "bytes": 45009
+  },
+  "lib/srd-combat.ts": {
+   "sha": "a6548f4664d6d1e3cfda3bd5fe15071f0b205c87",
+   "mode": "100644",
+   "bytes": 23261
+  },
+  "lib/srd-spell-runtime.ts": {
+   "sha": "dd77cee3043d2c39981415960f6f46e9728b1f08",
+   "mode": "100644",
+   "bytes": 53177
+  },
+  "lib/srd-spellbook.ts": {
+   "sha": "268f17c39f41be939a771badc8d0a5f3337c128c",
+   "mode": "100644",
+   "bytes": 33537
+  },
+  "lib/srd.json": {
+   "sha": "f8725259ad8f005a26b12c50cbd58516886ff3b7",
+   "mode": "100644",
+   "bytes": 1463403
+  },
+  "lib/state-merge.ts": {
+   "sha": "e25dd496659d43b7dd23bbbfe25bad15253fc58d",
+   "mode": "100644",
+   "bytes": 9196
+  },
+  "lib/token-art.ts": {
+   "sha": "5899e1133cf31679fbf271eb0621e4deac47fc51",
+   "mode": "100644",
+   "bytes": 1424
+  },
+  "lib/utils.ts": {
+   "sha": "b500fb167fdaa78785feb0ff03b51f8a182a44ae",
+   "mode": "100644",
+   "bytes": 177
+  },
+  "lib/world-spine.ts": {
+   "sha": "88d8a7ffaa2f417cd999b2a618bf582dc2911a74",
+   "mode": "100644",
+   "bytes": 3696
+  },
+  "lib/world-travel.ts": {
+   "sha": "6e1c76fc4c41ceb0afc61fca5816e6eb92236466",
+   "mode": "100644",
+   "bytes": 5266
+  },
+  "music/batalha_alta.mp3": {
+   "sha": "3ff95181bf186cc96d38de9bb83680f0bf484e0b",
+   "mode": "100644",
+   "bytes": 5257728
+  },
+  "music/batalha_media.mp3": {
+   "sha": "f914138841fac0bbad1ac0647c53f2b1b15339a7",
+   "mode": "100644",
+   "bytes": 7589302
+  },
+  "music/cidades.mp3": {
+   "sha": "9361fd285686f4c3eafb7f92c138bd47a4d4d130",
+   "mode": "100644",
+   "bytes": 5289691
+  },
+  "next-env.d.ts": {
+   "sha": "cb4c1e391211c351c76914ab06566ac968da10a0",
+   "mode": "100644",
+   "bytes": 257
+  },
+  "next.config.ts": {
+   "sha": "af098af58a7cb226b4e46510c0bb32420408733f",
+   "mode": "100644",
+   "bytes": 306
+  },
+  "package-lock.json": {
+   "sha": "2a42f22aa870b06b032391866ff306805879f19d",
+   "mode": "100644",
+   "bytes": 570771
+  },
+  "package.json": {
+   "sha": "8faa9fdb7d288abd1d0749884f870cb558ee84c8",
+   "mode": "100644",
+   "bytes": 3046
+  },
+  "pnpm-lock.yaml": {
+   "sha": "21f78df6dcd716ef35f77517c41df0fb575741d8",
+   "mode": "100644",
+   "bytes": 384151
+  },
+  "pnpm-workspace.yaml": {
+   "sha": "7a9db80489d7b1a663dfd0d7e2f39645b630bccd",
+   "mode": "100644",
+   "bytes": 497
+  },
+  "postcss.config.mjs": {
+   "sha": "61e36849cf7cfa9f1f71b4a3964a4953e3e243d3",
+   "mode": "100644",
+   "bytes": 94
+  },
+  "public/SRD-5.2.1.pdf": {
+   "sha": "d35c1e1c5bbb7033b922168a71bb676cad392104",
+   "mode": "100644",
+   "bytes": 6031375
+  },
+  "public/abbey.png": {
+   "sha": "a039fe1fbaff994dc851947d0ad7571a753d0a93",
+   "mode": "100644",
+   "bytes": 2929509
+  },
+  "public/art/dragons-logo.png": {
+   "sha": "4359a6fe9010d116e66562c96c640fae04fd0959",
+   "mode": "100644",
+   "bytes": 1928400
+  },
+  "public/art/dragons-menu-source.png": {
+   "sha": "2bfd68f9e8e9c8a8d38af9bd6787098f26964b59",
+   "mode": "100644",
+   "bytes": 2846628
+  },
+  "public/art/dragons-menu.webp": {
+   "sha": "4be1028cacbb4c8201bc0cf7890370a156dd796a",
+   "mode": "100644",
+   "bytes": 376158
+  },
+  "public/art/miniatures-sheet.png": {
+   "sha": "b59933862f1e41dffdf8c40952dd3ba30726cb55",
+   "mode": "100644",
+   "bytes": 2743834
+  },
+  "public/art/miniatures/token-0.webp": {
+   "sha": "4ea56d5c176617440d974ec75939071b44034870",
+   "mode": "100644",
+   "bytes": 37070
+  },
+  "public/art/miniatures/token-1.webp": {
+   "sha": "9b3826a8e8c7767615fe498f04fb70a471cc1723",
+   "mode": "100644",
+   "bytes": 37632
+  },
+  "public/art/miniatures/token-10.webp": {
+   "sha": "a21481a986f878c7375755eea414658e2750fe74",
+   "mode": "100644",
+   "bytes": 47372
+  },
+  "public/art/miniatures/token-11.webp": {
+   "sha": "a0c6332e4a96f16e7527906a9bea60e2e4506559",
+   "mode": "100644",
+   "bytes": 42310
+  },
+  "public/art/miniatures/token-12.webp": {
+   "sha": "ccfcc4aa500b60ef8ce7475998f2055e9d4f50b6",
+   "mode": "100644",
+   "bytes": 41370
+  },
+  "public/art/miniatures/token-13.webp": {
+   "sha": "00e09ad44f19603162828f5a3226eb8f8d132bd5",
+   "mode": "100644",
+   "bytes": 42150
+  },
+  "public/art/miniatures/token-14.webp": {
+   "sha": "35eba7e4890e1ca4301c995753c74a9455240d92",
+   "mode": "100644",
+   "bytes": 34826
+  },
+  "public/art/miniatures/token-15.webp": {
+   "sha": "789464b687b6343657c207cb811ba8825cf38045",
+   "mode": "100644",
+   "bytes": 37028
+  },
+  "public/art/miniatures/token-16.webp": {
+   "sha": "3ae9affa420a33a970e7d5326142327341e94381",
+   "mode": "100644",
+   "bytes": 39434
+  },
+  "public/art/miniatures/token-17.webp": {
+   "sha": "f879deb7efdaa686b9df6e1725c4c66b871be12d",
+   "mode": "100644",
+   "bytes": 35970
+  },
+  "public/art/miniatures/token-18.webp": {
+   "sha": "9a0f9c2aa3c31909d98b9ebe191966d6df42c200",
+   "mode": "100644",
+   "bytes": 47874
+  },
+  "public/art/miniatures/token-19.webp": {
+   "sha": "4c01a792ec21b4203afba6736bf80136b9ec569c",
+   "mode": "100644",
+   "bytes": 42648
+  },
+  "public/art/miniatures/token-2.webp": {
+   "sha": "470835de880ed71917ab32670ec9bfa419382aa4",
+   "mode": "100644",
+   "bytes": 38060
+  },
+  "public/art/miniatures/token-20.webp": {
+   "sha": "3613101c4ee403bfc9e330baf483cdb1fd9c04e4",
+   "mode": "100644",
+   "bytes": 42864
+  },
+  "public/art/miniatures/token-21.webp": {
+   "sha": "4e0b8c9587f3f4aebf40e00caf6821c9cf96ebd5",
+   "mode": "100644",
+   "bytes": 38378
+  },
+  "public/art/miniatures/token-22.webp": {
+   "sha": "64ae62ab89e37eb1fa1ea57fe124b5749d7f0b17",
+   "mode": "100644",
+   "bytes": 31030
+  },
+  "public/art/miniatures/token-23.webp": {
+   "sha": "84e7a9ae32278880f3e571de0621d6bc14b1d04b",
+   "mode": "100644",
+   "bytes": 38012
+  },
+  "public/art/miniatures/token-24.webp": {
+   "sha": "48a34c6a38b72c65152566b9c24f2bd2aa4af14d",
+   "mode": "100644",
+   "bytes": 44418
+  },
+  "public/art/miniatures/token-25.webp": {
+   "sha": "4dd1180c6c6f5dd479afc630733dc0f3c4eabd08",
+   "mode": "100644",
+   "bytes": 39376
+  },
+  "public/art/miniatures/token-26.webp": {
+   "sha": "45b991c01545a2145e8b81b6a37c8185132afcbd",
+   "mode": "100644",
+   "bytes": 45512
+  },
+  "public/art/miniatures/token-27.webp": {
+   "sha": "357dc337fa42315e8f8607383a547acc29f468b0",
+   "mode": "100644",
+   "bytes": 42102
+  },
+  "public/art/miniatures/token-28.webp": {
+   "sha": "436ced58861767dbc630b9e9e05457433780888d",
+   "mode": "100644",
+   "bytes": 41010
+  },
+  "public/art/miniatures/token-29.webp": {
+   "sha": "04d1e5c394f6c1f2e6539d98a43a96b68d8a1ca1",
+   "mode": "100644",
+   "bytes": 42138
+  },
+  "public/art/miniatures/token-3.webp": {
+   "sha": "c387bb8c483a5ee441bb4f5760772b9726a826e5",
+   "mode": "100644",
+   "bytes": 37590
+  },
+  "public/art/miniatures/token-30.webp": {
+   "sha": "446c7706ec25183b3a06185a362cbc9e61779048",
+   "mode": "100644",
+   "bytes": 37308
+  },
+  "public/art/miniatures/token-31.webp": {
+   "sha": "80ed30347e8bf6ead15fe0fad887936b4e225393",
+   "mode": "100644",
+   "bytes": 41286
+  },
+  "public/art/miniatures/token-32.webp": {
+   "sha": "f90cfed39c3204b7ba08f5c25058916a8a4cd520",
+   "mode": "100644",
+   "bytes": 40734
+  },
+  "public/art/miniatures/token-33.webp": {
+   "sha": "dc099354205d6b3429ff346b96fe922265f0e1a5",
+   "mode": "100644",
+   "bytes": 37390
+  },
+  "public/art/miniatures/token-34.webp": {
+   "sha": "a172247a3308f030f2434f8def31f8c9b497e7e9",
+   "mode": "100644",
+   "bytes": 45920
+  },
+  "public/art/miniatures/token-35.webp": {
+   "sha": "e96692dd07c29aa40ea019093ffdaa34702ca2cc",
+   "mode": "100644",
+   "bytes": 46290
+  },
+  "public/art/miniatures/token-4.webp": {
+   "sha": "e362aeda2550c1d8a028f5d35abc067cf7baff0c",
+   "mode": "100644",
+   "bytes": 38436
+  },
+  "public/art/miniatures/token-5.webp": {
+   "sha": "9d566851790abb3def4906adfad001c7dc53b68f",
+   "mode": "100644",
+   "bytes": 39940
+  },
+  "public/art/miniatures/token-6.webp": {
+   "sha": "6402ed0b2c71c758684ef6900e7246db893f068b",
+   "mode": "100644",
+   "bytes": 45216
+  },
+  "public/art/miniatures/token-7.webp": {
+   "sha": "f6957ae3fc6aad82722495b82d0bca7d3b87c567",
+   "mode": "100644",
+   "bytes": 44204
+  },
+  "public/art/miniatures/token-8.webp": {
+   "sha": "e37e8d9f2a427a2a13b90375e09f79585ebe1adf",
+   "mode": "100644",
+   "bytes": 38648
+  },
+  "public/art/miniatures/token-9.webp": {
+   "sha": "62d5d8b758087e7c99d4aa0f8205a8b31d8ba58b",
+   "mode": "100644",
+   "bytes": 39780
+  },
+  "public/art/scenery-sheet.png": {
+   "sha": "accac0563d1d59f09482a71f7bea7325a1c97b52",
+   "mode": "100644",
+   "bytes": 2948607
+  },
+  "public/art/scenery/prop-0.webp": {
+   "sha": "89a744401a6eff0af12553fc5a46d4e56a284719",
+   "mode": "100644",
+   "bytes": 57598
+  },
+  "public/art/scenery/prop-1.webp": {
+   "sha": "fcf1c702a3bd6c9fdba5482a5dc778d3c3b4557a",
+   "mode": "100644",
+   "bytes": 34796
+  },
+  "public/art/scenery/prop-10.webp": {
+   "sha": "66de273b8841c030568e04bbf06ab7d8e21365b3",
+   "mode": "100644",
+   "bytes": 34732
+  },
+  "public/art/scenery/prop-11.webp": {
+   "sha": "87068162cfb21c1f4a3a51a611b031643e5f6c7b",
+   "mode": "100644",
+   "bytes": 54622
+  },
+  "public/art/scenery/prop-12.webp": {
+   "sha": "63212408856c2a494fe1392d5fb870fb00b92c75",
+   "mode": "100644",
+   "bytes": 44606
+  },
+  "public/art/scenery/prop-13.webp": {
+   "sha": "3f25830dfe1741d02b2727613613e3696c7631e6",
+   "mode": "100644",
+   "bytes": 49410
+  },
+  "public/art/scenery/prop-14.webp": {
+   "sha": "5d4dd2ad48c513c82350318c66f1a7bc70405bed",
+   "mode": "100644",
+   "bytes": 47432
+  },
+  "public/art/scenery/prop-15.webp": {
+   "sha": "db95733c6f38c0d37f1313d1e0fa263d9fb3212a",
+   "mode": "100644",
+   "bytes": 44326
+  },
+  "public/art/scenery/prop-16.webp": {
+   "sha": "4812acb8202eb22ffc991cbccbd0291302dabb68",
+   "mode": "100644",
+   "bytes": 39310
+  },
+  "public/art/scenery/prop-17.webp": {
+   "sha": "e2439628d59248920e27286a015b4683578035bd",
+   "mode": "100644",
+   "bytes": 43222
+  },
+  "public/art/scenery/prop-18.webp": {
+   "sha": "9b76a38742f2aeb872b6005fd26bdc14febfaad9",
+   "mode": "100644",
+   "bytes": 44928
+  },
+  "public/art/scenery/prop-19.webp": {
+   "sha": "195f1b4dea508ac8ea0192c8e57afe6d5969da89",
+   "mode": "100644",
+   "bytes": 35154
+  },
+  "public/art/scenery/prop-2.webp": {
+   "sha": "9ce4408c9a8c7b077dd6e053bc53ae41b720342b",
+   "mode": "100644",
+   "bytes": 49862
+  },
+  "public/art/scenery/prop-20.webp": {
+   "sha": "b0e86014490a49fb077fa03306b01f05f923f6e0",
+   "mode": "100644",
+   "bytes": 35586
+  },
+  "public/art/scenery/prop-21.webp": {
+   "sha": "431189c431693d43b975a6569831a53708f8498d",
+   "mode": "100644",
+   "bytes": 38928
+  },
+  "public/art/scenery/prop-22.webp": {
+   "sha": "6654f9452cf196e06adc4a0507e6e8e3750e7f2a",
+   "mode": "100644",
+   "bytes": 37002
+  },
+  "public/art/scenery/prop-23.webp": {
+   "sha": "f0b0aebaf82a48b89ace4aa4b36cf95d35fcd6e3",
+   "mode": "100644",
+   "bytes": 53802
+  },
+  "public/art/scenery/prop-24.webp": {
+   "sha": "a3fc0de20892752bde3517bbe25909da4988063e",
+   "mode": "100644",
+   "bytes": 43176
+  },
+  "public/art/scenery/prop-25.webp": {
+   "sha": "78746230abb888e9c26ce1d33005f159fc3d3790",
+   "mode": "100644",
+   "bytes": 47810
+  },
+  "public/art/scenery/prop-26.webp": {
+   "sha": "2b6b88699e867af20a10f152aa55d8ee97086d3f",
+   "mode": "100644",
+   "bytes": 41604
+  },
+  "public/art/scenery/prop-27.webp": {
+   "sha": "4a7615606d761f0a2327a2524f49adf5a88e6769",
+   "mode": "100644",
+   "bytes": 28752
+  },
+  "public/art/scenery/prop-28.webp": {
+   "sha": "cd209b177ce2fa982e80020f3d28f1f89d9db03f",
+   "mode": "100644",
+   "bytes": 46260
+  },
+  "public/art/scenery/prop-29.webp": {
+   "sha": "143a0508f78624a0848f524dc766f31371d7011d",
+   "mode": "100644",
+   "bytes": 51928
+  },
+  "public/art/scenery/prop-3.webp": {
+   "sha": "dbbe27d14bc65d7665610e66b91243824f01081e",
+   "mode": "100644",
+   "bytes": 48712
+  },
+  "public/art/scenery/prop-30.webp": {
+   "sha": "e62bd28ffa5df08f93352648aa0704df2ab8575a",
+   "mode": "100644",
+   "bytes": 36346
+  },
+  "public/art/scenery/prop-31.webp": {
+   "sha": "0ddd0f02a58d72afee911b5370b8a8e16d1cbd0c",
+   "mode": "100644",
+   "bytes": 34178
+  },
+  "public/art/scenery/prop-32.webp": {
+   "sha": "cf8d19981c38e80cb1d9ae3afbdf5b933bc731e5",
+   "mode": "100644",
+   "bytes": 48246
+  },
+  "public/art/scenery/prop-33.webp": {
+   "sha": "6bce3d3b850b0f6a577927ced4262f6699413a51",
+   "mode": "100644",
+   "bytes": 59664
+  },
+  "public/art/scenery/prop-34.webp": {
+   "sha": "881a31dddb9cb7cc53012be95fdbc4aa5e77a79a",
+   "mode": "100644",
+   "bytes": 42950
+  },
+  "public/art/scenery/prop-35.webp": {
+   "sha": "05f213e38571506d937be58201120ec0376ac085",
+   "mode": "100644",
+   "bytes": 38332
+  },
+  "public/art/scenery/prop-4.webp": {
+   "sha": "1200b640187d4516e0e9e28863ce4c670e2f99a2",
+   "mode": "100644",
+   "bytes": 59432
+  },
+  "public/art/scenery/prop-5.webp": {
+   "sha": "bf09f60cb0d3e0bd15a66dc0dc4bac7fd666d851",
+   "mode": "100644",
+   "bytes": 46008
+  },
+  "public/art/scenery/prop-6.webp": {
+   "sha": "f9f9adc16f131f405183e8e104ac303ad2dd5367",
+   "mode": "100644",
+   "bytes": 37278
+  },
+  "public/art/scenery/prop-7.webp": {
+   "sha": "fcc41ab8719ffd37841f11eeec3439c1ee259688",
+   "mode": "100644",
+   "bytes": 41448
+  },
+  "public/art/scenery/prop-8.webp": {
+   "sha": "0ff1c1eaea8280716c4d5f5981a792d0b9845676",
+   "mode": "100644",
+   "bytes": 36038
+  },
+  "public/art/scenery/prop-9.webp": {
+   "sha": "132182eb57eaeea7667fa8ebf1df4f386cee2bc6",
+   "mode": "100644",
+   "bytes": 39314
+  },
+  "public/art/terrain-sheet.png": {
+   "sha": "f40f5d9c51e565dd701f059b9c30aba1ec3d8b64",
+   "mode": "100644",
+   "bytes": 4450293
+  },
+  "public/art/terrain/terrain-0.webp": {
+   "sha": "4a815099b7618a58198c286519131e00085881f4",
+   "mode": "100644",
+   "bytes": 24206
+  },
+  "public/art/terrain/terrain-1.webp": {
+   "sha": "efae7ad4405a190a89bcb49607bcc09d1d51fb0d",
+   "mode": "100644",
+   "bytes": 26142
+  },
+  "public/art/terrain/terrain-10.webp": {
+   "sha": "79ba58a87258a6cd4b824e1af2944c45bc9a889d",
+   "mode": "100644",
+   "bytes": 25362
+  },
+  "public/art/terrain/terrain-11.webp": {
+   "sha": "97cc20725f6273720e7406c3f3549cc0f648024c",
+   "mode": "100644",
+   "bytes": 24642
+  },
+  "public/art/terrain/terrain-12.webp": {
+   "sha": "5498ecfe6cb97abdb2bef6345ef127e6433c21d3",
+   "mode": "100644",
+   "bytes": 23820
+  },
+  "public/art/terrain/terrain-13.webp": {
+   "sha": "3ca6decf2b0165a21b8534da75fbb0fc1dd9cc95",
+   "mode": "100644",
+   "bytes": 22792
+  },
+  "public/art/terrain/terrain-14.webp": {
+   "sha": "019dac2b70f87fb612d33b92e5589ba74d898076",
+   "mode": "100644",
+   "bytes": 24026
+  },
+  "public/art/terrain/terrain-15.webp": {
+   "sha": "16b20160f5abe2b01037fbb027c532dc42a312e8",
+   "mode": "100644",
+   "bytes": 25754
+  },
+  "public/art/terrain/terrain-16.webp": {
+   "sha": "717f7ffc0b2cbed4179ec4e7bc75d98e310e0343",
+   "mode": "100644",
+   "bytes": 25616
+  },
+  "public/art/terrain/terrain-17.webp": {
+   "sha": "612efd9f2cb26618e3a9279df81a318c0a28f639",
+   "mode": "100644",
+   "bytes": 23094
+  },
+  "public/art/terrain/terrain-18.webp": {
+   "sha": "22d5ca25d6159d941dbd7164375cca283636f4b0",
+   "mode": "100644",
+   "bytes": 20442
+  },
+  "public/art/terrain/terrain-19.webp": {
+   "sha": "db2c54b16e0ad898c05f5176f4725315a8b7d7f5",
+   "mode": "100644",
+   "bytes": 21270
+  },
+  "public/art/terrain/terrain-2.webp": {
+   "sha": "daeb45459e68b4f9d31ab4701348579bc1ae66a1",
+   "mode": "100644",
+   "bytes": 22678
+  },
+  "public/art/terrain/terrain-20.webp": {
+   "sha": "a3389bbf5f43367437e2d20062eae66de501b4d3",
+   "mode": "100644",
+   "bytes": 24288
+  },
+  "public/art/terrain/terrain-21.webp": {
+   "sha": "f4b1558d1625279ba187d40d9a75f4e8edd9ee2e",
+   "mode": "100644",
+   "bytes": 21650
+  },
+  "public/art/terrain/terrain-22.webp": {
+   "sha": "9f3d353eacb29c62c1bc19ac10220c89a1bea6d9",
+   "mode": "100644",
+   "bytes": 18026
+  },
+  "public/art/terrain/terrain-23.webp": {
+   "sha": "6dc201e98221ee2b1c297c415b1ed12aa421c362",
+   "mode": "100644",
+   "bytes": 22918
+  },
+  "public/art/terrain/terrain-24.webp": {
+   "sha": "3baadc05d303285908ea8baca0b8751b7af549db",
+   "mode": "100644",
+   "bytes": 23380
+  },
+  "public/art/terrain/terrain-25.webp": {
+   "sha": "0fa8d77cfe6ace22a998518fa7f89c50a791f759",
+   "mode": "100644",
+   "bytes": 24672
+  },
+  "public/art/terrain/terrain-26.webp": {
+   "sha": "4f69c043a7bf4e3d217702a75df41f34bd1907f8",
+   "mode": "100644",
+   "bytes": 25868
+  },
+  "public/art/terrain/terrain-27.webp": {
+   "sha": "01e7d4ba5df0d1c338d5375b0c40f75545fe38eb",
+   "mode": "100644",
+   "bytes": 18636
+  },
+  "public/art/terrain/terrain-28.webp": {
+   "sha": "06e3b129f9e9c67ca9d4bb1cbb85b7837a525ce1",
+   "mode": "100644",
+   "bytes": 21696
+  },
+  "public/art/terrain/terrain-29.webp": {
+   "sha": "18e72725e297ed69c882925d216d428684bdb070",
+   "mode": "100644",
+   "bytes": 22266
+  },
+  "public/art/terrain/terrain-3.webp": {
+   "sha": "08f375e2ae02f5511478fe55ecf655b468e5c3a3",
+   "mode": "100644",
+   "bytes": 23948
+  },
+  "public/art/terrain/terrain-30.webp": {
+   "sha": "fd2cd80222a17f66068c132de1d10fadcfcb868a",
+   "mode": "100644",
+   "bytes": 19516
+  },
+  "public/art/terrain/terrain-31.webp": {
+   "sha": "15171f4601680e229a7506335840495c0da6518d",
+   "mode": "100644",
+   "bytes": 22756
+  },
+  "public/art/terrain/terrain-32.webp": {
+   "sha": "f2406c5e2fa0f869634df3462120d0702f2133d5",
+   "mode": "100644",
+   "bytes": 21526
+  },
+  "public/art/terrain/terrain-33.webp": {
+   "sha": "07c9d736264a0610a44b8bd59cbad1f17678c022",
+   "mode": "100644",
+   "bytes": 18404
+  },
+  "public/art/terrain/terrain-34.webp": {
+   "sha": "1da4d618715381ae3a1bcfe8f3acee718b3f84e6",
+   "mode": "100644",
+   "bytes": 26072
+  },
+  "public/art/terrain/terrain-35.webp": {
+   "sha": "93087614ece811e9616899d5601acb8816e970b0",
+   "mode": "100644",
+   "bytes": 21146
+  },
+  "public/art/terrain/terrain-4.webp": {
+   "sha": "8434064784536d0784847f636458284c1f9f6aae",
+   "mode": "100644",
+   "bytes": 21680
+  },
+  "public/art/terrain/terrain-5.webp": {
+   "sha": "ccb68948c31e70a47233d8314afbcf93ff9ae004",
+   "mode": "100644",
+   "bytes": 23820
+  },
+  "public/art/terrain/terrain-6.webp": {
+   "sha": "a7ebdebd9fde92bdd4caca4672df5796e433b2e9",
+   "mode": "100644",
+   "bytes": 25958
+  },
+  "public/art/terrain/terrain-7.webp": {
+   "sha": "424290d576c1d4fb97804352dc2c6d2205b31667",
+   "mode": "100644",
+   "bytes": 25236
+  },
+  "public/art/terrain/terrain-8.webp": {
+   "sha": "5183614758dbd9c3295b5eb9a53fa70a9cceea27",
+   "mode": "100644",
+   "bytes": 25570
+  },
+  "public/art/terrain/terrain-9.webp": {
+   "sha": "447a7ae96aefee6bd11d920312bfce4a28241072",
+   "mode": "100644",
+   "bytes": 25254
+  },
+  "public/art/tokens-sheet.png": {
+   "sha": "83e9b92c97f4dfc0f33d2756310fafee5335c86d",
+   "mode": "100644",
+   "bytes": 2804332
+  },
+  "public/art/tokens/token-0.webp": {
+   "sha": "5ffc69f1ce207186ef0730f296b103c3980fb0f1",
+   "mode": "100644",
+   "bytes": 21036
+  },
+  "public/art/tokens/token-1.webp": {
+   "sha": "2c8ea4624018464783f72956ca22fddeb3a3d4df",
+   "mode": "100644",
+   "bytes": 21820
+  },
+  "public/art/tokens/token-10.webp": {
+   "sha": "c617da2b1d27d092a4965c957f68288fbf225636",
+   "mode": "100644",
+   "bytes": 27986
+  },
+  "public/art/tokens/token-11.webp": {
+   "sha": "ba53fb72714611b659d31aef8018243ba0720321",
+   "mode": "100644",
+   "bytes": 24492
+  },
+  "public/art/tokens/token-12.webp": {
+   "sha": "4c721cf4ccbf2ba4e039922092dcb751a16260f6",
+   "mode": "100644",
+   "bytes": 22066
+  },
+  "public/art/tokens/token-13.webp": {
+   "sha": "f352ba8a08c8cde4554bdaa55885f56583669833",
+   "mode": "100644",
+   "bytes": 23296
+  },
+  "public/art/tokens/token-14.webp": {
+   "sha": "dd2a92703929561e55362915e18fa2248077f1d1",
+   "mode": "100644",
+   "bytes": 25492
+  },
+  "public/art/tokens/token-15.webp": {
+   "sha": "673ddad3dc30ff29a9f66c506859a17b13082089",
+   "mode": "100644",
+   "bytes": 19584
+  },
+  "public/art/tokens/token-16.webp": {
+   "sha": "978babc5c9d8682181081b16fea6593e39c73efc",
+   "mode": "100644",
+   "bytes": 18404
+  },
+  "public/art/tokens/token-17.webp": {
+   "sha": "45b72fbc8cf74f1a10decd4c536d2fbf1c6b931f",
+   "mode": "100644",
+   "bytes": 19608
+  },
+  "public/art/tokens/token-18.webp": {
+   "sha": "dbc364e5a1a164ca35870ad14325648e827459a7",
+   "mode": "100644",
+   "bytes": 26712
+  },
+  "public/art/tokens/token-19.webp": {
+   "sha": "399271d39c2c0432a888ab7ea9b037f252d541d9",
+   "mode": "100644",
+   "bytes": 20830
+  },
+  "public/art/tokens/token-2.webp": {
+   "sha": "b652b9645e95c8ec4a33c8e3fd51e9d767922a26",
+   "mode": "100644",
+   "bytes": 20050
+  },
+  "public/art/tokens/token-20.webp": {
+   "sha": "857c5da6f7e7cda87310e19511b2ab75834100fc",
+   "mode": "100644",
+   "bytes": 26780
+  },
+  "public/art/tokens/token-21.webp": {
+   "sha": "5886921142287e3ef296341b93ea5a6fa7234455",
+   "mode": "100644",
+   "bytes": 21648
+  },
+  "public/art/tokens/token-22.webp": {
+   "sha": "3a0b95481b7cc37d28ad48787890ec0624c97185",
+   "mode": "100644",
+   "bytes": 19316
+  },
+  "public/art/tokens/token-23.webp": {
+   "sha": "46d61bbfa422440f89942594465778510daef5e1",
+   "mode": "100644",
+   "bytes": 18290
+  },
+  "public/art/tokens/token-24.webp": {
+   "sha": "efdd50fd8ea40daf0f15cd9fa4541792c2e957e7",
+   "mode": "100644",
+   "bytes": 20544
+  },
+  "public/art/tokens/token-25.webp": {
+   "sha": "2c3084fafe4abc271cb1cb8caacc163cfe782ea9",
+   "mode": "100644",
+   "bytes": 22382
+  },
+  "public/art/tokens/token-26.webp": {
+   "sha": "96dd22ee74535fdd2f898b3a06a03305b932578f",
+   "mode": "100644",
+   "bytes": 27198
+  },
+  "public/art/tokens/token-27.webp": {
+   "sha": "4ac0e00baeb153859352d463a33ee09f5f6c29da",
+   "mode": "100644",
+   "bytes": 23942
+  },
+  "public/art/tokens/token-28.webp": {
+   "sha": "8304cca80a0921b4939e2fb79ad504e8ee231478",
+   "mode": "100644",
+   "bytes": 21894
+  },
+  "public/art/tokens/token-29.webp": {
+   "sha": "7a04d264ec21b97d0165de72ef83aa5f44258adf",
+   "mode": "100644",
+   "bytes": 24568
+  },
+  "public/art/tokens/token-3.webp": {
+   "sha": "138f41bb16564910b3f535120368732242695a18",
+   "mode": "100644",
+   "bytes": 20196
+  },
+  "public/art/tokens/token-30.webp": {
+   "sha": "69b5679e160c14b62102dd6a887f778340201084",
+   "mode": "100644",
+   "bytes": 25838
+  },
+  "public/art/tokens/token-31.webp": {
+   "sha": "5f96e936645c02134f123a626ff424dafecb0a4a",
+   "mode": "100644",
+   "bytes": 24458
+  },
+  "public/art/tokens/token-32.webp": {
+   "sha": "4ab6ce0f20c4c2a5265ec4f2ad2c2a737171b319",
+   "mode": "100644",
+   "bytes": 23182
+  },
+  "public/art/tokens/token-33.webp": {
+   "sha": "368f7f4e8f7a4c993257698a44ec3791683ccab2",
+   "mode": "100644",
+   "bytes": 25850
+  },
+  "public/art/tokens/token-34.webp": {
+   "sha": "5ee6305bff679ac38cd00e39da7c7239c0ced3f6",
+   "mode": "100644",
+   "bytes": 27730
+  },
+  "public/art/tokens/token-35.webp": {
+   "sha": "6e94e7e6bc2b55591b50eb2b5ae47959e7eedaf2",
+   "mode": "100644",
+   "bytes": 26904
+  },
+  "public/art/tokens/token-4.webp": {
+   "sha": "803d4152c3980e2780c70d7b146480d3d4775cb1",
+   "mode": "100644",
+   "bytes": 22580
+  },
+  "public/art/tokens/token-5.webp": {
+   "sha": "1493f2cd4c8e533c85b4128c18f14dfd5433c215",
+   "mode": "100644",
+   "bytes": 20704
+  },
+  "public/art/tokens/token-6.webp": {
+   "sha": "78235ed1da06f49c97d3d65e802972bcddf854a2",
+   "mode": "100644",
+   "bytes": 23720
+  },
+  "public/art/tokens/token-7.webp": {
+   "sha": "66e24a279c4a7355ee71e35c4dfbcb1fdfb8e16c",
+   "mode": "100644",
+   "bytes": 23346
+  },
+  "public/art/tokens/token-8.webp": {
+   "sha": "aa8270b65ae405577ef48879fdfbb1b29015900e",
+   "mode": "100644",
+   "bytes": 23834
+  },
+  "public/art/tokens/token-9.webp": {
+   "sha": "b95deaed42f0fd54ff0abb7e05c33efe57f076e3",
+   "mode": "100644",
+   "bytes": 24202
+  },
+  "public/art/ui-icons-sheet.png": {
+   "sha": "4873ab9134fb1f810e034ae1262d6b43c6dc3dc3",
+   "mode": "100644",
+   "bytes": 2569043
+  },
+  "public/art/ui-panels-sheet.png": {
+   "sha": "01d207f7cfaad221801c78538c0e98beb6743459",
+   "mode": "100644",
+   "bytes": 2497838
+  },
+  "public/art/ui/button-default.webp": {
+   "sha": "dfbc614001c28bd2cd08abd2501a05c6a5a49ba1",
+   "mode": "100644",
+   "bytes": 54472
+  },
+  "public/art/ui/button-disabled.webp": {
+   "sha": "9a7cddf1e826f3dcd99f848f393b1ba1bcbf4655",
+   "mode": "100644",
+   "bytes": 56884
+  },
+  "public/art/ui/button-selected.webp": {
+   "sha": "138c9ba081bf668a25262884f97c9f8110fc6b5a",
+   "mode": "100644",
+   "bytes": 54438
+  },
+  "public/art/ui/frame-bronze.webp": {
+   "sha": "1e26f470be7ee147c7118c2530a600d9aa10c047",
+   "mode": "100644",
+   "bytes": 59908
+  },
+  "public/art/ui/frame-gold.webp": {
+   "sha": "fe281f9ded58494e44a8cc3c82162a6d74598d7c",
+   "mode": "100644",
+   "bytes": 52150
+  },
+  "public/art/ui/frame-leather.webp": {
+   "sha": "adae5b3ecfb662087863a45a93a340fabfa93eba",
+   "mode": "100644",
+   "bytes": 59486
+  },
+  "public/art/ui/icon-0.webp": {
+   "sha": "e09c81e60d17a1c1f6e7ab57122c2b0835495e43",
+   "mode": "100644",
+   "bytes": 9838
+  },
+  "public/art/ui/icon-1.webp": {
+   "sha": "64771cd832afb4b3f8f39d214bc89122f195e943",
+   "mode": "100644",
+   "bytes": 6518
+  },
+  "public/art/ui/icon-10.webp": {
+   "sha": "6c63c05bcaf24e693865be7f2ca3c156a54ac137",
+   "mode": "100644",
+   "bytes": 6194
+  },
+  "public/art/ui/icon-11.webp": {
+   "sha": "4fa780c89a72fd14fb0be069e6a055dc41ce9113",
+   "mode": "100644",
+   "bytes": 9236
+  },
+  "public/art/ui/icon-12.webp": {
+   "sha": "d661dd6fb174dcbd6059779bfd70dc120eb11f69",
+   "mode": "100644",
+   "bytes": 8214
+  },
+  "public/art/ui/icon-13.webp": {
+   "sha": "ef9480b4bbc960dcbc689db1bf1b7f5024501de2",
+   "mode": "100644",
+   "bytes": 6488
+  },
+  "public/art/ui/icon-14.webp": {
+   "sha": "c5a8855b343f0592b65de11b50bb9acb2dbfb024",
+   "mode": "100644",
+   "bytes": 6924
+  },
+  "public/art/ui/icon-15.webp": {
+   "sha": "7b970a7acf8f06049b7c31226ae6e15497131cd1",
+   "mode": "100644",
+   "bytes": 6520
+  },
+  "public/art/ui/icon-16.webp": {
+   "sha": "07f0ea8f45aab61d2f72a66efb58a0dd2c87c4a9",
+   "mode": "100644",
+   "bytes": 5978
+  },
+  "public/art/ui/icon-17.webp": {
+   "sha": "71b33709a0ffceb92cc1cb06d5d22b4d3b037b58",
+   "mode": "100644",
+   "bytes": 9364
+  },
+  "public/art/ui/icon-18.webp": {
+   "sha": "44e098c0c1d3707a8ca107aaf786b97c8a661611",
+   "mode": "100644",
+   "bytes": 10272
+  },
+  "public/art/ui/icon-19.webp": {
+   "sha": "c4e68a6a0fab2ae6ba2abfdd58e04e05f47b36d4",
+   "mode": "100644",
+   "bytes": 5818
+  },
+  "public/art/ui/icon-2.webp": {
+   "sha": "e534b065121ad1bc9f4ab515e6bb83e070530c1c",
+   "mode": "100644",
+   "bytes": 10504
+  },
+  "public/art/ui/icon-20.webp": {
+   "sha": "b2aa14e33b7b6de95c657110c120e37e7ed75bcd",
+   "mode": "100644",
+   "bytes": 9526
+  },
+  "public/art/ui/icon-21.webp": {
+   "sha": "3689d2e154beafbb88a345034bcc0b9c25f9fc0c",
+   "mode": "100644",
+   "bytes": 6940
+  },
+  "public/art/ui/icon-22.webp": {
+   "sha": "2ef58b1a51027e3ceb64084f3b1f9b78439bc676",
+   "mode": "100644",
+   "bytes": 6586
+  },
+  "public/art/ui/icon-23.webp": {
+   "sha": "ec5c805b36bc4830459092c40174eb4814063086",
+   "mode": "100644",
+   "bytes": 7930
+  },
+  "public/art/ui/icon-24.webp": {
+   "sha": "84c69a3af3a57ae46bf6cb5f0a931b88616692d8",
+   "mode": "100644",
+   "bytes": 7442
+  },
+  "public/art/ui/icon-25.webp": {
+   "sha": "06afa332a0cfc5c715ba2fcb4b44764d8654a7b2",
+   "mode": "100644",
+   "bytes": 7424
+  },
+  "public/art/ui/icon-26.webp": {
+   "sha": "28a0bb7777d7cd074cbb31fd3d1b0047f82ff5fa",
+   "mode": "100644",
+   "bytes": 6984
+  },
+  "public/art/ui/icon-27.webp": {
+   "sha": "f3733fa522169b7370471cbc69400436ba9a7de6",
+   "mode": "100644",
+   "bytes": 8100
+  },
+  "public/art/ui/icon-28.webp": {
+   "sha": "dc1c900efd29dde405a18a45cff21c4c0b72c800",
+   "mode": "100644",
+   "bytes": 8508
+  },
+  "public/art/ui/icon-29.webp": {
+   "sha": "90c4c1e8181d845bca70d2b685934a585bda63aa",
+   "mode": "100644",
+   "bytes": 8464
+  },
+  "public/art/ui/icon-3.webp": {
+   "sha": "d4edecc58adbbbd53ddb995035b6e153e140f324",
+   "mode": "100644",
+   "bytes": 10664
+  },
+  "public/art/ui/icon-30.webp": {
+   "sha": "6bd394ba2c876a92c348c60c4ea04921c6eab710",
+   "mode": "100644",
+   "bytes": 8722
+  },
+  "public/art/ui/icon-31.webp": {
+   "sha": "4afa1a040d6f3678893c3fd80d57766d4f50c96d",
+   "mode": "100644",
+   "bytes": 5032
+  },
+  "public/art/ui/icon-32.webp": {
+   "sha": "4ef92234d2c2532951f14d4040dd3ca78d5514cd",
+   "mode": "100644",
+   "bytes": 8116
+  },
+  "public/art/ui/icon-33.webp": {
+   "sha": "96010f5b2d6b205dd04466afa790003bbced1052",
+   "mode": "100644",
+   "bytes": 8956
+  },
+  "public/art/ui/icon-34.webp": {
+   "sha": "505d29966d3abbaa8da2388a135903e6a9f49746",
+   "mode": "100644",
+   "bytes": 6778
+  },
+  "public/art/ui/icon-35.webp": {
+   "sha": "c22a275d56e7dde80c8c4d2c7488baeae9af0796",
+   "mode": "100644",
+   "bytes": 9570
+  },
+  "public/art/ui/icon-4.webp": {
+   "sha": "a91764ef34a1902045e62fb2fff80a69574b1913",
+   "mode": "100644",
+   "bytes": 5766
+  },
+  "public/art/ui/icon-5.webp": {
+   "sha": "547314a15eca323d88ce0eddca6ef7caa87772ee",
+   "mode": "100644",
+   "bytes": 9668
+  },
+  "public/art/ui/icon-6.webp": {
+   "sha": "1a71df669bc3ebcae5b5ad5fd56a67f27ba47215",
+   "mode": "100644",
+   "bytes": 8244
+  },
+  "public/art/ui/icon-7.webp": {
+   "sha": "fa3ac5b5c0fcce87a946a816481a4279bf9c92f1",
+   "mode": "100644",
+   "bytes": 6896
+  },
+  "public/art/ui/icon-8.webp": {
+   "sha": "eb4d881515d69322efa7224898a182e39f4758e7",
+   "mode": "100644",
+   "bytes": 7364
+  },
+  "public/art/ui/icon-9.webp": {
+   "sha": "4eed6e6732d81a118321f1d8c9637d1be1331316",
+   "mode": "100644",
+   "bytes": 9106
+  },
+  "public/art/ui/surface-leather.webp": {
+   "sha": "0dd234a9d58faf64e35aa69734f6756f0e7bdaab",
+   "mode": "100644",
+   "bytes": 102298
+  },
+  "public/art/ui/surface-parchment.webp": {
+   "sha": "76813e332f7a78560f72a2f7034f4cb2fb03febd",
+   "mode": "100644",
+   "bytes": 98650
+  },
+  "public/art/ui/surface-stone.webp": {
+   "sha": "68d188c07764f36e2fb7ba4db6edbeecd7baec6e",
+   "mode": "100644",
+   "bytes": 83820
+  },
+  "public/favicon.svg": {
+   "sha": "ca747cb66b233fedec5ff0c84f97bb4631c05dbf",
+   "mode": "100644",
+   "bytes": 712
+  },
+  "public/file.svg": {
+   "sha": "16fe3d3a3ab9bd42e1616ec00066faba7e4aabe0",
+   "mode": "100644",
+   "bytes": 392
+  },
+  "public/gamemaster_skeleton.jpg": {
+   "sha": "d1e6323d912ea150aa960c860ca59212a751790b",
+   "mode": "100644",
+   "bytes": 872133
+  },
+  "public/globe.svg": {
+   "sha": "c7215fe0f2634ae9f51d15dacc09184f5343941a",
+   "mode": "100644",
+   "bytes": 1036
+  },
+  "public/maps/canyon-v2.webp": {
+   "sha": "695d160157d794658b626b252aea02206179a0d1",
+   "mode": "100644",
+   "bytes": 602700
+  },
+  "public/maps/canyon.png": {
+   "sha": "fd9be1e159a2d86ab263079438263dd36e2e19d9",
+   "mode": "100644",
+   "bytes": 1155650
+  },
+  "public/maps/covil-v2.webp": {
+   "sha": "a42d5944731fe789f20cea4c67f7e93f8121a0cf",
+   "mode": "100644",
+   "bytes": 565490
+  },
+  "public/maps/covil.png": {
+   "sha": "c88974c8638b0be75dd36c9f0d294844126342cd",
+   "mode": "100644",
+   "bytes": 1194768
+  },
+  "public/maps/dungeon-v2.webp": {
+   "sha": "d3475f99bcaadcbc783e4b1dfe64c03920075715",
+   "mode": "100644",
+   "bytes": 518986
+  },
+  "public/maps/dungeon.png": {
+   "sha": "a07a9c9d0ae7a19fb38ed488784d20f021f6ac1c",
+   "mode": "100644",
+   "bytes": 2660910
+  },
+  "public/maps/mata-v2.webp": {
+   "sha": "b6e58e5d724b754e0479011a1b15442d96639eb7",
+   "mode": "100644",
+   "bytes": 753718
+  },
+  "public/maps/mata.png": {
+   "sha": "9cfea1a7b8799ffbb85d0b45c19ef9b96be78fc5",
+   "mode": "100644",
+   "bytes": 3257296
+  },
+  "public/maps/ruinas-v2.webp": {
+   "sha": "b003a5032127691c483faa387730ae9b2a39332c",
+   "mode": "100644",
+   "bytes": 638998
+  },
+  "public/maps/ruinas.png": {
+   "sha": "9ca82aaad7277691bc4dcd735c1baf244c607ba1",
+   "mode": "100644",
+   "bytes": 1107702
+  },
+  "public/maps/vila-collision.json": {
+   "sha": "909685624700cdd6da43191d46a4880cb494d197",
+   "mode": "100644",
+   "bytes": 10166
+  },
+  "public/maps/vila-v2.webp": {
+   "sha": "59549e8b592d2d2203902c0de71500391e081d0b",
+   "mode": "100644",
+   "bytes": 773142
+  },
+  "public/maps/vila.png": {
+   "sha": "ac1a2f8d338d589e4527a34e3af71df6515cc88e",
+   "mode": "100644",
+   "bytes": 3383556
+  },
+  "public/music/batalha_alta.mp3": {
+   "sha": "3ff95181bf186cc96d38de9bb83680f0bf484e0b",
+   "mode": "100644",
+   "bytes": 5257728
+  },
+  "public/music/batalha_media.mp3": {
+   "sha": "f914138841fac0bbad1ac0647c53f2b1b15339a7",
+   "mode": "100644",
+   "bytes": 7589302
+  },
+  "public/music/cidades.mp3": {
+   "sha": "9361fd285686f4c3eafb7f92c138bd47a4d4d130",
+   "mode": "100644",
+   "bytes": 5289691
+  },
+  "public/window.svg": {
+   "sha": "d05e7a1bc066341298657dcc304dbadc4ddcab9d",
+   "mode": "100644",
+   "bytes": 386
+  },
+  "render.yaml": {
+   "sha": "8e31d7e98b89fe89d951d68ef0cb5791c7423835",
+   "mode": "100644",
+   "bytes": 591
+  },
+  "scratch/debug-mmo-combat.mjs": {
+   "sha": "e0c74f590a2569855d6cfa11c6b8cf5ae40726b8",
+   "mode": "100644",
+   "bytes": 5138
+  },
+  "scratch/test-user-actions.mjs": {
+   "sha": "0c95294915619c1e5ce86f0b352523795e8f6694",
+   "mode": "100644",
+   "bytes": 1913
+  },
+  "scratch/update-tokens.cjs": {
+   "sha": "262cf3377a82089b4575ebb13f40295b0efc2bcb",
+   "mode": "100644",
+   "bytes": 16069
+  },
+  "scripts/crop-sheet-object.mjs": {
+   "sha": "42807bad791920cf5d57908d4ee5ce9022be65ef",
+   "mode": "100644",
+   "bytes": 1822
+  },
+  "scripts/install-ci.mjs": {
+   "sha": "f204feb237f3076559abac2316052c470fe3dc90",
+   "mode": "100644",
+   "bytes": 1307
+  },
+  "scripts/prepare-clean-maps.mjs": {
+   "sha": "32397cd90133bb5bf4be169097f26850edef22b3",
+   "mode": "100644",
+   "bytes": 1492
+  },
+  "scripts/prepare-dragons-art.mjs": {
+   "sha": "a8e270802a1307f8fe6f60aa7c894d51782b949e",
+   "mode": "100644",
+   "bytes": 1266
+  },
+  "scripts/prepare-hud-art.mjs": {
+   "sha": "9c7ba70b63e88eff355a753cfd4bc1a486a93df3",
+   "mode": "100644",
+   "bytes": 1813
+  },
+  "scripts/prepare-production-assets.mjs": {
+   "sha": "b3f318921d1d90e842745daa215274d3cc3175c5",
+   "mode": "100644",
+   "bytes": 2595
+  },
+  "scripts/proxy3000.mjs": {
+   "sha": "97c077d2095d5c494427bfb6e9c36fcdf71b10d0",
+   "mode": "100644",
+   "bytes": 1256
+  },
+  "scripts/repair-ui-copy.mjs": {
+   "sha": "10e6bc748ed81e2bc2554bfd359fd13ba5f73845",
+   "mode": "100644",
+   "bytes": 4948
+  },
+  "scripts/sites-env.mjs": {
+   "sha": "4887ad94f05267d8607fc0698bbb10f2c7a17838",
+   "mode": "100644",
+   "bytes": 1160
+  },
+  "scripts/start-server.mjs": {
+   "sha": "c256a9a1db1b23bb270c3974a834294ab9d0619e",
+   "mode": "100644",
+   "bytes": 1318
+  },
+  "scripts/test-art-assets.mjs": {
+   "sha": "1b01d5a88c6930f5b1cc5b0ac15b297865562f41",
+   "mode": "100644",
+   "bytes": 1856
+  },
+  "scripts/test-coop-flow.mjs": {
+   "sha": "d021e8d835df3b3bcf95c09bfe4ea2b1386f46e5",
+   "mode": "100644",
+   "bytes": 5278
+  },
+  "scripts/test-dragons-world.mjs": {
+   "sha": "dfbafeb600e6ce9d6a6fc7477de886c1530203cb",
+   "mode": "100644",
+   "bytes": 3513
+  },
+  "scripts/test-dungeon-crawler.mjs": {
+   "sha": "fd0ae11eae5e1e8247be56f8ec6afb5081daba0c",
+   "mode": "100644",
+   "bytes": 9711
+  },
+  "scripts/test-launch-session.mjs": {
+   "sha": "654ccaa0cabae112ea1816a4da764043d5727b5a",
+   "mode": "100644",
+   "bytes": 2137
+  },
+  "scripts/test-online-battles.mjs": {
+   "sha": "07bb8a67827e0ec9b348c0accc1728fd2609c40a",
+   "mode": "100644",
+   "bytes": 6622
+  },
+  "scripts/test-polish-a.mjs": {
+   "sha": "4e26a0d2151cde75a26be1ab918452177bc5ddd4",
+   "mode": "100644",
+   "bytes": 10240
+  },
+  "scripts/test-polish-b.mjs": {
+   "sha": "2ee520b87ee05e8b58215c987416aeda3c02a9d4",
+   "mode": "100644",
+   "bytes": 16604
+  },
+  "scripts/test-production-mechanics.mjs": {
+   "sha": "3b46e5388492a9355aa80a5cf787e857180ef0d1",
+   "mode": "100644",
+   "bytes": 2601
+  },
+  "scripts/test-srd-b1.mjs": {
+   "sha": "6123162476ecce366154e86408f108f9353f67c9",
+   "mode": "100644",
+   "bytes": 20290
+  },
+  "scripts/test-srd-b2.mjs": {
+   "sha": "a9fd5138ead8e3824de7613eb09f442a2c90541e",
+   "mode": "100644",
+   "bytes": 10555
+  },
+  "scripts/test-srd-b3.mjs": {
+   "sha": "d53ad13c8224143bb29319ead7780e907f2547ac",
+   "mode": "100644",
+   "bytes": 17180
+  },
+  "scripts/test-srd-c1.mjs": {
+   "sha": "f06daf826ed53b9121633c94e564ddb81fbdd645",
+   "mode": "100644",
+   "bytes": 14850
+  },
+  "scripts/test-srd-c2.mjs": {
+   "sha": "c5108779838553222762a7e4503e04c6c0f75908",
+   "mode": "100644",
+   "bytes": 12620
+  },
+  "server.mjs": {
+   "sha": "93cbdc2e9ba34c9e4fd2608d04da3e80b895d210",
+   "mode": "100644",
+   "bytes": 6012
+  },
+  "server.mjs.before-heromoved-fix.bak": {
+   "sha": "3979907d4167dbc8d98739c93a8157ae1f924ab5",
+   "mode": "100644",
+   "bytes": 5600
+  },
+  "skills-lock.json": {
+   "sha": "a7ff4b6481eae4f5359e476dbfc83d8888a098eb",
+   "mode": "100644",
+   "bytes": 511
+  },
+  "tests/test-api.mts": {
+   "sha": "464ea79fc82c2759792bf2944a040222ced12322",
+   "mode": "100644",
+   "bytes": 2115
+  },
+  "tests/test-biome-travel.mts": {
+   "sha": "ef6979ef1115da7d38970979a11319404508a4b4",
+   "mode": "100644",
+   "bytes": 3925
+  },
+  "tests/test-campaign-combat-death.mts": {
+   "sha": "c012950cc3cc319466f5d60bc54a73a7c279640d",
+   "mode": "100644",
+   "bytes": 7136
+  },
+  "tests/test-campaign-mobile.mts": {
+   "sha": "c8cb6a8dcdeb4e57763e97a1f9fcbe16e194f975",
+   "mode": "100644",
+   "bytes": 2941
+  },
+  "tests/test-concurrency-persistence.mts": {
+   "sha": "308dca4aed9c59868b767d830cd76a502530bd2f",
+   "mode": "100644",
+   "bytes": 6873
+  },
+  "tests/test-engine.mts": {
+   "sha": "9c17d23cf2bd43b156d3018d74a013e64b742bf6",
+   "mode": "100644",
+   "bytes": 929
+  },
+  "tests/test-groq.mts": {
+   "sha": "e9283ddd197c3e8b128f5c71edd5668ec8630903",
+   "mode": "100644",
+   "bytes": 1310
+  },
+  "tests/test-live-server.mts": {
+   "sha": "829250e184f15f4f43e83404eb3a570ab5c44aef",
+   "mode": "100644",
+   "bytes": 7664
+  },
+  "tests/test-mechanics.mts": {
+   "sha": "f03f2129d1196fda7e515b57aaf28fc35d13160e",
+   "mode": "100644",
+   "bytes": 9452
+  },
+  "tests/test-mmo-combat-actions.mjs": {
+   "sha": "f6b83dbd42fb96711e72a036e34e99031af7b5bd",
+   "mode": "100644",
+   "bytes": 7634
+  },
+  "tests/test-mmo-corpse-and-village-peace.mjs": {
+   "sha": "ae12dc9c9cd835436b5fc55b2d9b5fc4cf9c9971",
+   "mode": "100644",
+   "bytes": 7790
+  },
+  "tests/test-mmo-durable-object-ws.mts": {
+   "sha": "03a8512d48b46ae7a8502c888d20f85844909dff",
+   "mode": "100644",
+   "bytes": 12961
+  },
+  "tests/test-mmo-forest-transition.mjs": {
+   "sha": "fa64808df7ae7b25ec8db37378b83c8725327d87",
+   "mode": "100644",
+   "bytes": 8013
+  },
+  "tests/test-mmo-forest-transition.mts": {
+   "sha": "54e46d7d4d332a67f42602f5abee5764abfad217",
+   "mode": "100644",
+   "bytes": 6194
+  },
+  "tests/test-mmo-multiplayer.mts": {
+   "sha": "a6ffda7b7c10b9291cf65feb3250ea5f25d12547",
+   "mode": "100644",
+   "bytes": 15050
+  },
+  "tests/test-mmo-party-system.mts": {
+   "sha": "e5f47418dc24a0314b37aaef3012f403e35cf55f",
+   "mode": "100644",
+   "bytes": 12006
+  },
+  "tests/test-mmo-realtime-sync.mts": {
+   "sha": "a734976d8323ab1628c67b53b72cac1e48ae5acc",
+   "mode": "100644",
+   "bytes": 8171
+  },
+  "tests/test-phase1-phase2.mts": {
+   "sha": "02247135d1ffdcb2fe0d46eb8ef73b394b77e5f9",
+   "mode": "100644",
+   "bytes": 11259
+  },
+  "tests/test-rpg-features.mts": {
+   "sha": "45d04482d858d9cc1dee6447ded0b98daf81078b",
+   "mode": "100644",
+   "bytes": 1908
+  },
+  "tests/test-session-isolation.mts": {
+   "sha": "c60ec2a0cf42c1ed00ff4e5e16230d898f4a4d8b",
+   "mode": "100644",
+   "bytes": 7004
+  },
+  "tests/test-spatial-rules.mts": {
+   "sha": "af1de6a2241db867a3f4f1cc523a89067740e774",
+   "mode": "100644",
+   "bytes": 12757
+  },
+  "tests/test-srd-hp-levelup.mts": {
+   "sha": "26f6171f4fa39cac77ad15411e650dfc181d61ed",
+   "mode": "100644",
+   "bytes": 13431
+  },
+  "tests/test-ui-rules.mts": {
+   "sha": "2c298e5eefbc4672309e0bfce77720a32dbd8ec7",
+   "mode": "100644",
+   "bytes": 8440
+  },
+  "tests/test-village-custom-collision.mts": {
+   "sha": "4d42296a90863614fd01629820ab944097a8671a",
+   "mode": "100644",
+   "bytes": 7781
+  },
+  "tests/test-wipe-turn-groq.mts": {
+   "sha": "3d5e796a98b4e4d09b1701b54cf134ca2db59486",
+   "mode": "100644",
+   "bytes": 6851
+  },
+  "tsconfig.json": {
+   "sha": "9182ffb22bfb9cf033ad28113106b5309b39d5cc",
+   "mode": "100644",
+   "bytes": 826
+  },
+  "tsconfig.tsbuildinfo": {
+   "sha": "a2ff30d2f68df0bdcbb3468de156f10e9cb8bd01",
+   "mode": "100644",
+   "bytes": 496317
+  },
+  "vendor/shadcn-tailwind-4.13.0.LICENSE.md": {
+   "sha": "fad4d887a681dd49233e5ed01ee2c7a1513089a0",
+   "mode": "100644",
+   "bytes": 1063
+  },
+  "vendor/shadcn-tailwind-4.13.0.css": {
+   "sha": "7807c58eb94de8b764b9b6b7b5d8cde6d012b17f",
+   "mode": "100644",
+   "bytes": 16041
+  },
+  "vercel.json": {
+   "sha": "9773ce6800538ffd5ecca3c404a5882c577c3303",
+   "mode": "100644",
+   "bytes": 116
+  },
+  "vite.config.ts": {
+   "sha": "ec2232f0cd3cb15a5bc2789804f2a86d29ab2ca5",
+   "mode": "100644",
+   "bytes": 2338
+  }
+ }
+}

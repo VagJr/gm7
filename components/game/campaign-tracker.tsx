@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Compass,
   MapPin,
@@ -17,7 +17,7 @@ import {
   ChevronDown,
   ChevronUp
 } from 'lucide-react';
-import type { State } from '@/lib/game-engine';
+import type { State, Character } from '@/lib/game-engine';
 
 export interface CampaignStep {
   id: number;
@@ -27,7 +27,7 @@ export interface CampaignStep {
   description: string;
   locationHint: string;
   actionLabel?: string;
-  actionType?: 'talk_doran' | 'talk_elenor' | 'talk_kaelen' | 'travel_forest' | 'travel_dungeon' | 'combat' | 'rest';
+  actionType?: 'talk_doran' | 'talk_elenor' | 'talk_kaelen' | 'travel_forest' | 'travel_ruins' | 'travel_dungeon' | 'travel_canyon' | 'travel_lair' | 'combat' | 'rest' | 'open_journal';
 }
 
 export const CAMPAIGN_STEPS: CampaignStep[] = [
@@ -36,9 +36,9 @@ export const CAMPAIGN_STEPS: CampaignStep[] = [
     act: 0,
     chapterTitle: 'Prólogo • Vila do Rio Verde',
     stepTitle: 'O Chamado do Ancião Doran',
-    description: 'Criaturas de cinzas foram avistadas ao redor da vila. Encontre o Ancião Doran na praça central para receber sua incumbência sagrada.',
+    description: 'Encontre o Ancião Doran e receba a missão que inicia a campanha de Valdoria.',
     locationHint: 'Praça Central da Vila',
-    actionLabel: 'Falar com Ancião Doran',
+    actionLabel: 'Falar com Doran',
     actionType: 'talk_doran'
   },
   {
@@ -46,9 +46,9 @@ export const CAMPAIGN_STEPS: CampaignStep[] = [
     act: 0,
     chapterTitle: 'Prólogo • Vila do Rio Verde',
     stepTitle: 'Provisões da Alquimista Elenor',
-    description: 'A floresta além dos muros é traiçoeira. Consulte a Alquimista Elenor para garantir elixires e Poções de Cura para a jornada.',
-    locationHint: 'Oficina da Erborista',
-    actionLabel: 'Consultar Elenor',
+    description: 'Prepare a expedição e converse com Elenor antes de deixar a segurança da vila.',
+    locationHint: 'Oficina da Alquimista',
+    actionLabel: 'Falar com Elenor',
     actionType: 'talk_elenor'
   },
   {
@@ -56,113 +56,163 @@ export const CAMPAIGN_STEPS: CampaignStep[] = [
     act: 0,
     chapterTitle: 'Prólogo • Vila do Rio Verde',
     stepTitle: 'Autorização do Capitão Kaelen',
-    description: 'Apresente-se ao Capitão Kaelen na guarnição para receber a bênção tática da guarda e a autorização de passagem pelos portões da vila.',
-    locationHint: 'Posto de Guarda da Ponte',
-    actionLabel: 'Falar com Capitão Kaelen',
+    description: 'Obtenha a autorização da guarda para atravessar os portões e iniciar a expedição.',
+    locationHint: 'Posto de Guarda',
+    actionLabel: 'Falar com Kaelen',
     actionType: 'talk_kaelen'
   },
   {
     id: 4,
     act: 1,
-    chapterTitle: 'Ato I • A Floresta dos Sussurros',
-    stepTitle: 'Neutralizar a Patrulha de Cinzas',
-    description: 'Marche para a Mata e enfrente a Sentinela de Cinzas e seus cães das sombras para limpar a trilha que conduz ao Menir Sagrado.',
-    locationHint: 'Trilha da Floresta dos Sussurros',
-    actionLabel: 'Viajar para a Mata',
+    chapterTitle: 'Ato I • Floresta dos Sussurros',
+    stepTitle: 'Assegurar a Rota da Floresta',
+    description: 'Derrote a Sentinela de Cinzas e as criaturas que controlam a passagem.',
+    locationHint: 'Floresta dos Sussurros',
+    actionLabel: 'Viajar para a Floresta',
     actionType: 'travel_forest'
   },
   {
     id: 5,
     act: 2,
-    chapterTitle: 'Ato II • Catacumbas dos Três Selos',
-    stepTitle: 'Descer à Masmorra Subterrânea',
-    description: 'Adentre as catacumbas sob as ruínas antigas. Derrote o Guardião Espectral e decifre os três selos inscritos na pedra.',
-    locationHint: 'Câmaras das Catacumbas',
-    actionLabel: 'Entrar na Dungeon',
-    actionType: 'travel_dungeon'
+    chapterTitle: 'Ato II • Ruínas da Abadia',
+    stepTitle: 'Expurgar o Culto das Cinzas',
+    description: 'Atravesse as ruínas e elimine a força que protege a entrada das catacumbas.',
+    locationHint: 'Pátio das Ruínas da Abadia',
+    actionLabel: 'Viajar para as Ruínas',
+    actionType: 'travel_ruins'
   },
   {
     id: 6,
+    act: 2,
+    chapterTitle: 'Ato II • Catacumbas dos Três Selos',
+    stepTitle: 'Derrotar Malakor',
+    description: 'Entre nas catacumbas, vença os guardiões e derrube Malakor, o Lorde das Cinzas.',
+    locationHint: 'Catacumbas dos Três Selos',
+    actionLabel: 'Entrar nas Catacumbas',
+    actionType: 'travel_dungeon'
+  },
+  {
+    id: 7,
     act: 3,
-    chapterTitle: 'Ato III • O Santuário do Vazio (Clímax)',
-    stepTitle: 'Confrontar Malakor, o Conjurador do Vazio',
-    description: 'No centro do santuário profanado, impeça Malakor de quebrar a última barreira arcana. Derrote-o e salve Valdoria do esquecimento eterno!',
-    locationHint: 'Coração do Santuário do Vazio',
-    actionLabel: 'Batalha Decisiva',
-    actionType: 'combat'
+    chapterTitle: 'Ato III • Desfiladeiro da Fenda',
+    stepTitle: 'Romper a Vanguarda Dracônica',
+    description: 'Destrua os wyrmlings e guerreiros draconianos que bloqueiam o caminho até a cratera.',
+    locationHint: 'Desfiladeiro da Fenda Escarpada',
+    actionLabel: 'Viajar para o Desfiladeiro',
+    actionType: 'travel_canyon'
+  },
+  {
+    id: 8,
+    act: 3,
+    chapterTitle: 'Ato III • Covil de Ignisrax',
+    stepTitle: 'Confrontar Ignisrax',
+    description: 'Entre na Cratera Magmática e derrote Ignisrax para encerrar a campanha principal.',
+    locationHint: 'Covil de Ignisrax',
+    actionLabel: 'Marchar para o Covil',
+    actionType: 'travel_lair'
+  },
+  {
+    id: 9,
+    act: 3,
+    chapterTitle: 'Epílogo • Mundo Persistente',
+    stepTitle: 'Valdoria Continua Viva',
+    description: 'A campanha principal foi concluída. Contratos, dungeons, economia e eventos do sandbox continuam ativos.',
+    locationHint: 'Valdoria',
+    actionLabel: 'Abrir Diário',
+    actionType: 'open_journal'
   }
 ];
 
 interface CampaignTrackerProps {
   state: State | null;
+  activeHero?: Character | null;
   onTalkNpc: (npcId: string) => void;
-  onTravel: (biome: 'village' | 'forest' | 'dungeon') => void;
+  onTravel: (biome: 'village' | 'forest' | 'ruins' | 'dungeon' | 'canyon' | 'lair') => void;
   onStartCombat: () => void;
   onOpenJournal: () => void;
 }
 
 export function CampaignTracker({
   state,
+  activeHero,
   onTalkNpc,
   onTravel,
   onStartCombat,
   onOpenJournal
 }: CampaignTrackerProps) {
-  const [isMinimized, setIsMinimized] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(true);
   const [showBriefingModal, setShowBriefingModal] = useState(false);
 
-  // Determine current campaign step dynamically based on game state
+  // Determine current campaign step dynamically based on individual hero or party progression
   const currentStepIndex = React.useMemo(() => {
-    if (!state) return 0;
-    const qp = state.questProgress || {};
-    const biome = state.biome || 'village';
-    const hasEnemiesAlive = state.enemies && state.enemies.some((e) => e.hp > 0);
+    if (!state) {
+      return 0;
+    }
 
-    // 1. Defeated Malakor -> Step 6 (index 5)
-    if (qp.malakor_defeated) return 5;
+    /*
+     * Only authoritative campaign proof advances the guide.
+     * biome/location are intentionally NOT read here.
+     */
+    const proof =
+      activeHero?.campaignProof ||
+      {};
 
-    // 2. In dungeon or entered dungeon -> Step 6 (index 5: Confrontar Malakor)
-    if (qp.dungeon_entered || biome === 'dungeon' || state.location === 2) {
+    if (
+      proof.ignisrax_defeated
+    ) {
+      return 8;
+    }
+
+    if (
+      proof.canyon_cleared
+    ) {
+      return 7;
+    }
+
+    if (
+      proof.malakor_defeated
+    ) {
+      return 6;
+    }
+
+    if (
+      proof.ruins_cleared
+    ) {
       return 5;
     }
 
-    // 3. Defeated forest enemies / cleared forest -> Step 5 (index 4: Descer à Masmorra)
-    if (qp.forest_cleared) {
+    if (
+      proof.forest_cleared
+    ) {
       return 4;
     }
 
-    // 4. In forest: if enemies are alive -> Step 4 (index 3: Neutralizar Patrulha)
-    if (biome === 'forest' || state.location === 1) {
-      if (hasEnemiesAlive) return 3;
-      return 4;
+    if (
+      proof.kaelen_talked
+    ) {
+      return 3;
     }
 
-    // 5. In Village: check NPC interaction flags
-    if (qp.kaelen_talked) {
-      return 3; // Step 4: Marche para a Floresta
-    }
-    if (qp.elenor_talked) {
-      return 2; // Step 3: Falar com Capitão Kaelen
-    }
-    if (qp.doran_talked) {
-      return 1; // Step 2: Provisões da Alquimista Elenor
+    if (
+      proof.elenor_talked
+    ) {
+      return 2;
     }
 
-    // Default: Step 1 (index 0: O Chamado do Ancião Doran)
+    if (
+      proof.doran_talked
+    ) {
+      return 1;
+    }
+
     return 0;
-  }, [state]);
+  }, [
+    state,
+    activeHero
+  ]);
 
   const currentStep = CAMPAIGN_STEPS[currentStepIndex] || CAMPAIGN_STEPS[0];
-  const progressPercent = Math.round(((currentStepIndex + 1) / CAMPAIGN_STEPS.length) * 100);
-
-  // Auto-open briefing once for new adventurers
-  useEffect(() => {
-    const seen = localStorage.getItem('campaign_briefing_seen_v1');
-    if (!seen) {
-      setShowBriefingModal(true);
-      localStorage.setItem('campaign_briefing_seen_v1', 'true');
-    }
-  }, []);
+  const progressPercent = Math.round((currentStepIndex / (CAMPAIGN_STEPS.length - 1)) * 100);
 
   const handleActionClick = () => {
     if (!currentStep.actionType) return;
@@ -179,11 +229,23 @@ export function CampaignTracker({
       case 'travel_forest':
         onTravel('forest');
         break;
+      case 'travel_ruins':
+        onTravel('ruins');
+        break;
       case 'travel_dungeon':
         onTravel('dungeon');
         break;
+      case 'travel_canyon':
+        onTravel('canyon');
+        break;
+      case 'travel_lair':
+        onTravel('lair');
+        break;
       case 'combat':
         onStartCombat();
+        break;
+      case 'open_journal':
+        onOpenJournal();
         break;
     }
   };
@@ -191,7 +253,7 @@ export function CampaignTracker({
   return (
     <>
       {/* ═══ ON-SCREEN CAMPAIGN STEP TRACKER (Always Visible & Accessible) ═══ */}
-      <div className="absolute top-12 sm:top-14 left-2 sm:left-4 z-20 max-w-xs sm:max-w-sm w-[92vw] sm:w-auto pointer-events-auto transition-all duration-200 select-none">
+      <div className="campaign-guide absolute top-12 sm:top-14 left-2 sm:left-4 z-20 max-w-xs sm:max-w-sm w-[92vw] sm:w-auto pointer-events-auto transition-all duration-200 select-none">
         <div className="bg-[#0b100c]/90 border border-amber-600/70 rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.85)] backdrop-blur-xl overflow-hidden">
           {/* Header Bar */}
           <div className="flex items-center justify-between px-3 py-1.5 bg-[#141c14] border-b border-amber-900/60">
@@ -275,12 +337,12 @@ export function CampaignTracker({
       {/* ═══ CAMPAIGN PRESENTATION & PROLOGUE BRIEFING MODAL ═══ */}
       {showBriefingModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-3 sm:p-6 animate-fade-in select-none">
-          <div className="relative w-full max-w-2xl bg-gradient-to-b from-[#101712] via-[#0c120e] to-[#070b08] border-2 border-amber-600/80 rounded-3xl p-5 sm:p-7 shadow-[0_0_60px_rgba(0,0,0,0.95)] flex flex-col gap-4 max-h-[90vh] overflow-hidden text-zinc-200">
+          <div className="relative w-full max-w-2xl bg-gradient-to-b from-[#101712] via-[#0c120e] to-[#070b08] border-2 border-amber-600/80 rounded-3xl p-5 sm:p-7 shadow-[0_0_60px_rgba(0,0,0,0.95)] flex flex-col gap-4 max-h-[92dvh] overflow-hidden text-zinc-200">
             {/* Modal Header */}
             <div className="flex items-start justify-between border-b border-amber-900/60 pb-3">
               <div>
                 <span className="text-xs font-mono text-amber-400 uppercase tracking-widest flex items-center gap-1.5">
-                  <Flame size={14} className="text-amber-400" /> Campanha Oficial D&D 5e
+                  <Flame size={14} className="text-amber-400" /> Campanha original de Valdoria
                 </span>
                 <h2 className="text-xl sm:text-2xl font-bold font-serif text-amber-200 tracking-wide mt-1">
                   Crônicas do Vale Proibido: O Despertar das Cinzas
@@ -298,7 +360,7 @@ export function CampaignTracker({
             <div className="flex-1 overflow-y-auto space-y-4 pr-1 scrollbar-thin scrollbar-thumb-amber-700">
               {/* Introduction Story Lore */}
               <div className="p-3.5 rounded-2xl bg-amber-950/30 border border-amber-800/40 text-xs sm:text-sm leading-relaxed text-amber-100/90 font-serif italic">
-                &ldquo;Durante séculos, os três selos de Valdoria protegeram o Vale das corrupções ancestrais. No entanto, estranhas cinzas começaram a soprar dos bosques profundos da Floresta dos Sussurros, e as sentinelas de pedra despertaram com fúria sombria. A pacífica Vila do Rio Verde é a última fortaleza de esperança. Vocês foram convocados pelo Ancião Doran para desvendar a violação dos selos, adentrar as catacumbas e erradicar o Conjurador do Vazio antes que a noite eterna recaia sobre o reino.&rdquo;
+                "Durante séculos, os três selos de Valdoria protegeram o Vale das corrupções ancestrais. No entanto, estranhas cinzas começaram a soprar dos bosques profundos da Floresta dos Sussurros, e as sentinelas de pedra despertaram com fúria sombria. A pacífica Vila do Rio Verde é a última fortaleza de esperança. Vocês foram convocados pelo Ancião Doran para desvendar a violação dos selos, adentrar as catacumbas e erradicar o Conjurador do Vazio antes que a noite eterna recaia sobre o reino."
               </div>
 
               {/* Roteiro da Campanha: Início, Meio e Fim */}

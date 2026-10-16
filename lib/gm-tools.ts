@@ -14,6 +14,9 @@ import {
   type Character,
   type Enemy
 } from './game-engine';
+import { MICRO_ADVENTURES, startMicroAdventure } from './micro-adventures';
+import { addInventoryItem } from './inventory-utils';
+import { adjustShopStockWithinBounds, adjustFaunaPresenceWithinBounds } from './sandbox-director';
 
 export interface GmToolDefinition {
   type: 'function';
@@ -39,104 +42,169 @@ export const GM_CONTROLLED_TOOLS: GmToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'create_encounter',
+      name: 'request_creature_spawn',
       description:
-        'Cria um encontro de combate posicionando um ou mais inimigos no mapa tático e ajustando a iniciativa.',
+        'Sugere ? engine que uma criatura ou pequeno grupo apareça por uma razão narrativa. A engine decide estatísticas, balanceamento, posicionamento e se haver? combate.',
       parameters: {
         type: 'object',
         properties: {
-          name: { type: 'string', description: 'Nome do monstro ou inimigo (ex: Sentinela de Cinzas, Cultista Sombrio)' },
-          hp: { type: 'number', description: 'Pontos de vida máximos do inimigo (ex: 9 a 45)' },
-          ac: { type: 'number', description: 'Classe de Armadura / CA do inimigo (ex: 10 a 16)' },
-          attack: { type: 'number', description: 'Bônus de ataque d20 do inimigo (ex: +2 a +5)' },
-          damage: { type: 'string', description: 'Fórmula de dano da criatura (ex: 1d6+1, 1d8+2)' },
-          x: { type: 'number', description: 'Coordenada X na grade tática (0 a 15)' },
-          y: { type: 'number', description: 'Coordenada Y na grade tática (0 a 15)' },
-          startCombat: { type: 'boolean', description: 'Se verdadeiro, inicia combate imediatamente com ordem de iniciativa 5e' }
-        },
-        required: ['name', 'hp', 'ac', 'attack', 'damage']
-      }
-    }
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'create_npc',
-      description:
-        'Cria um novo Personagem do Mestre (NPC) interativo no cenário, com diálogo e papel definido.',
-      parameters: {
-        type: 'object',
-        properties: {
-          name: { type: 'string', description: 'Nome completo do NPC' },
-          role: { type: 'string', description: 'Papel ou ocupação (ex: Guarda da Vila, Boticária, Ferreiro)' },
-          description: { type: 'string', description: 'Aparência e postura física do NPC' },
-          dialogue: {
-            type: 'array',
-            items: { type: 'string' },
-            description: 'Falas ou opções de conversa iniciais'
-          },
-          x: { type: 'number', description: 'Coordenada X opcional no mapa' },
-          y: { type: 'number', description: 'Coordenada Y opcional no mapa' }
-        },
-        required: ['name', 'role', 'description']
-      }
-    }
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'grant_loot',
-      description:
-        'Concede recompensas aos heróis (ouro, pontos de experiência XP ou itens como poções e armas).',
-      parameters: {
-        type: 'object',
-        properties: {
-          targetHeroId: { type: 'string', description: 'ID do herói beneficiado ou "all" para todo o grupo' },
-          itemId: { type: 'string', description: 'Identificador do item (ex: pocao-cura, espada-longa, adaga)' },
-          itemName: { type: 'string', description: 'Nome legível do item' },
-          gold: { type: 'number', description: 'Quantidade de moedas de ouro concedidas' },
-          xp: { type: 'number', description: 'Quantidade de pontos de experiência (XP) concedidos' },
-          reason: { type: 'string', description: 'Motivo da recompensa (ex: vitória em combate, baú encontrado)' }
-        },
-        required: []
-      }
-    }
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'set_combat_state',
-      description:
-        'Inicia ou encerra o modo de combate formal sob a ordem de iniciativa D&D 5e.',
-      parameters: {
-        type: 'object',
-        properties: {
-          action: {
+          creatureName: {
             type: 'string',
-            enum: ['start', 'end'],
-            description: '"start" para rolar iniciativa e iniciar combate, ou "end" para encerrar a batalha'
+            description: 'Nome ou conceito narrativo da criatura.'
           },
-          reason: { type: 'string', description: 'Motivo narrativo da mudança de estado de combate' }
+          threat: {
+            type: 'string',
+            enum: ['baixa', 'moderada', 'alta', 'chefe'],
+            description: 'Intensidade narrativa desejada. A engine poder? reduzir conforme o nível do grupo.'
+          },
+          count: {
+            type: 'number',
+            description: 'Quantidade sugerida. A engine limita automaticamente.'
+          },
+          reason: {
+            type: 'string',
+            description: 'Por que esta presença faz sentido neste local e momento.'
+          }
         },
-        required: ['action']
+        required: ['creatureName', 'threat', 'reason']
       }
     }
   },
+
   {
     type: 'function',
     function: {
-      name: 'update_quest',
+      name: 'request_temporary_npc',
       description:
-        'Atualiza o progresso de um objetivo ou marco da campanha no diário de missões.',
+        'Sugere um NPC contextual ao mundo. A engine decide se pode cri?-lo.',
       parameters: {
         type: 'object',
         properties: {
-          questKey: { type: 'string', description: 'Identificador único da etapa da missão (ex: act1-sentinel, investigate_abbey)' },
-          title: { type: 'string', description: 'Título claro do objetivo' },
-          completed: { type: 'boolean', description: 'Se o objetivo foi concluído com sucesso' },
-          narrativeNote: { type: 'string', description: 'Nota de desdobramento narrativo para o diário de bordo' }
+          name: { type: 'string' },
+          role: { type: 'string' },
+          description: { type: 'string' },
+          reason: { type: 'string' }
         },
-        required: ['questKey', 'title', 'completed']
+        required: ['name', 'role', 'description', 'reason']
+      }
+    }
+  },
+
+  {
+    type: 'function',
+    function: {
+      name: 'request_loot',
+      description:
+        'Sugere uma recompensa narrativa. A IA não escolhe ouro exato, XP ou estatísticas do item; a engine decide.',
+      parameters: {
+        type: 'object',
+        properties: {
+          rewardClass: {
+            type: 'string',
+            enum: ['pequena', 'normal', 'importante']
+          },
+          rewardKind: {
+            type: 'string',
+            enum: ['ouro', 'item', 'misto']
+          },
+          scope: {
+            type: 'string',
+            enum: ['jogador', 'grupo']
+          },
+          reason: {
+            type: 'string'
+          }
+        },
+        required: ['rewardClass', 'rewardKind', 'reason']
+      }
+    }
+  },
+
+  {
+    type: 'function',
+    function: {
+      name: 'request_environmental_event',
+      description:
+        'Sugere um acontecimento ambiental, rumor, presságio ou mudança regional sem mexer nas regras.',
+      parameters: {
+        type: 'object',
+        properties: {
+          text: {
+            type: 'string',
+            description: 'Descrição curta do acontecimento.'
+          },
+          reason: {
+            type: 'string',
+            description: 'Causa ou conexão com o estado atual do mundo.'
+          }
+        },
+        required: ['text', 'reason']
+      }
+    }
+  },
+
+  {
+    type: 'function',
+    function: {
+      name: 'request_microadventure',
+      description:
+        'Sugere que a engine ofereça uma microaventura disponível e coerente com o progresso atual. A engine escolhe qual aventura pode realmente começar.',
+      parameters: {
+        type: 'object',
+        properties: {
+          theme: {
+            type: 'string',
+            description: 'Tema narrativo desejado, sem informar ID interno.'
+          },
+          reason: {
+            type: 'string'
+          }
+        },
+        required: ['reason']
+      }
+    }
+  },
+
+  {
+    type: 'function',
+    function: {
+      name: 'influence_economy',
+      description:
+        'Sugere uma tendência econômica. A engine aplica somente valores seguros.',
+      parameters: {
+        type: 'object',
+        properties: {
+          trend: {
+            type: 'string',
+            enum: ['estavel', 'escassez', 'abundancia']
+          },
+          reason: {
+            type: 'string'
+          }
+        },
+        required: ['trend', 'reason']
+      }
+    }
+  },
+
+  {
+    type: 'function',
+    function: {
+      name: 'adjust_ecosystem',
+      description:
+        'Sugere uma manifestação ecológica segura para dar vida ? região.',
+      parameters: {
+        type: 'object',
+        properties: {
+          signal: {
+            type: 'string',
+            enum: ['rastros_lobos', 'cervos', 'corvos']
+          },
+          reason: {
+            type: 'string'
+          }
+        },
+        required: ['signal', 'reason']
       }
     }
   }
@@ -256,6 +324,12 @@ export function executeServerAuthoritativeGmTool(
       const xp = Math.max(0, Number(rawArgs.xp || 0));
       const rawItemId = String(rawArgs.itemId || '').trim().toLowerCase();
       const itemName = String(rawArgs.itemName || (ITEMS_CATALOG[rawItemId]?.name) || rawItemId);
+      const itemData =
+        rawArgs.itemData &&
+        typeof rawArgs.itemData ===
+          'object'
+          ? rawArgs.itemData
+          : undefined;
       const targetId = String(rawArgs.targetHeroId || 'all');
       const reason = String(rawArgs.reason || 'Recompensa do Mestre');
 
@@ -277,10 +351,24 @@ export function executeServerAuthoritativeGmTool(
           hero.xp = (hero.xp || 0) + xp;
         }
         if (rawItemId) {
-          // Append item safely into character inventory string
-          const curInv = hero.inventory ? hero.inventory.trim() : '';
-          const addition = rawItemId;
-          hero.inventory = curInv ? `${curInv}, ${addition}` : addition;
+          hero.inventory = addInventoryItem(
+            hero.inventory || '',
+            itemName,
+            1
+          );
+
+          if (itemData) {
+            hero.inventoryItemData = {
+              ...(hero.inventoryItemData || {}),
+              [rawItemId]: {
+                ...itemData,
+                id:
+                  rawItemId,
+                name:
+                  itemName
+              }
+            };
+          }
         }
       }
 
@@ -364,11 +452,63 @@ export function executeServerAuthoritativeGmTool(
       return { tool: name, success: true, message: logText };
     }
 
+    case 'trigger_world_event': {
+      const eventType = String(rawArgs.eventType || 'dragon_rumor');
+      const detail = String(rawArgs.detail || 'Um presságio misterioso altera a atmosfera do cenário.').slice(0, 500);
+      const adventureId = rawArgs.adventureId ? String(rawArgs.adventureId) : undefined;
+
+      if (!state.worldFlags) state.worldFlags = {};
+
+      if (eventType === 'dragon_rumor') {
+        state.worldFlags['dragon_rumor_active'] = true;
+      } else if (eventType === 'earthquake') {
+        state.worldFlags['earthquake_occurred'] = true;
+      } else if (eventType === 'cinders') {
+        state.worldFlags['cinders_falling'] = true;
+      }
+
+      let logText = `🌌 [Evento do Mundo: ${eventType.toUpperCase()}] ${detail}`;
+
+      if (adventureId && MICRO_ADVENTURES[adventureId]) {
+        const res = startMicroAdventure(state, adventureId);
+        logText += `\n${res.log}`;
+      } else {
+        state.logs.push(entry(logText, 'gm'));
+      }
+
+      return { tool: name, success: true, message: logText };
+    }
+
+    case 'influence_economy': {
+      const reason = String(rawArgs.reason || 'Adaptação econômica').slice(0, 150);
+      const mult = typeof rawArgs.multiplier === 'number' ? rawArgs.multiplier : 1.1;
+      const item = rawArgs.item ? String(rawArgs.item).slice(0, 50) : undefined;
+      const res = adjustShopStockWithinBounds(state, reason, mult, item);
+      return {
+        tool: name,
+        success: res.approved,
+        message: `[Economia Narrativa] Multiplicador ${res.finalMultiplier}x. ${res.notice}`
+      };
+    }
+
+    case 'adjust_ecosystem': {
+      const reason = String(rawArgs.reason || 'Dinâmica ambiental').slice(0, 150);
+      const critterType = rawArgs.critterType === 'lobos_rastros' || rawArgs.critterType === 'cervos'
+        ? rawArgs.critterType
+        : 'corvos';
+      const res = adjustFaunaPresenceWithinBounds(state, reason, critterType);
+      return {
+        tool: name,
+        success: res.approved,
+        message: res.message
+      };
+    }
+
     default:
       return {
         tool: name,
         success: false,
-        message: `Ferramenta não autorizada ou desconhecida: "${name}". Apenas as 5 ferramentas controladas são permitidas.`
+        message: `Ferramenta não autorizada ou desconhecida: "${name}". Apenas as ferramentas autorizadas são permitidas.`
       };
   }
 }
